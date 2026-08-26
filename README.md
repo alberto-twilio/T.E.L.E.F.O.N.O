@@ -1,0 +1,126 @@
+# voice-test-data-gen
+
+Generates realistic Twilio Voice test data (calls, recordings, transcriptions,
+conferences) against any account or subaccount, in any environment
+(prod/stage/dev), with optional conference regions. Runs locally, no
+Claude session or external service required.
+
+## Requirements
+
+Python 3, stdlib only. No `pip install` needed anywhere in this tool or in
+the scripts it produces.
+
+## Usage
+
+### Interactive
+
+```bash
+python3 wizard.py
+```
+
+You'll be asked for exactly two things: **Account SID** and **Auth Token**.
+Everything else is discovered automatically:
+
+- **Environment**: tries `api.twilio.com`, `api.stage.twilio.com`, and
+  `api.dev.twilio.com` in turn, whichever authenticates is the account's
+  real host. The wizard reports the detected `friendly_name` and tier
+  before doing anything else.
+- **Prod is gated hard**: if the detected tier is `prod`, you must type
+  `PROD` in capitals to continue. This isn't a flag that can be forgotten,
+  it's enforced in code (`gen/safety.py`).
+- **Numbers**: lists existing voice-capable numbers. If there are fewer
+  than 2, it checks whether the account's Trust Hub compliance profile is
+  approved *before* attempting a purchase (a profile that isn't approved
+  is a hard, manual-only blocker, not something any script can fix, so we
+  surface it up front instead of failing confusingly mid-purchase).
+- **Purchases** always get their own explicit `YES` confirmation, shown
+  with the exact numbers about to be bought.
+
+Then you pick categories, counts (fixed or a random range), and, for
+conferences, optional regions, all via short numbered menus, not a wall
+of CLI flags.
+
+At the end you choose to run the batch now, save it as a standalone
+script, or both. Every interactive run finishes by printing the exact
+unattended command that would reproduce it, copy-paste it into a cron
+entry or launchd job whenever you're ready to schedule this.
+
+### Unattended (no prompts at all)
+
+Pass `--sid-env`/`--token-env` (naming environment variables that must
+already hold the real credential values) and the run becomes fully
+non-interactive:
+
+```bash
+export VOICEGEN_SID_STAGE=...
+export VOICEGEN_TOKEN_STAGE=...
+python3 wizard.py \
+  --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE \
+  --categories calls,recordings_transcriptions,conferences \
+  --calls 10-60 --recordings-transcriptions 10-60 --conferences 10-60 \
+  --regions us1,au1 \
+  --mode run
+```
+
+Two things are never bypassed by a flag alone:
+
+- **Production**: if the detected account is prod, `--confirm-prod` is
+  required or the run aborts. There's deliberately no way to skip this
+  by accident, since there's no interactive prompt to fall back on here.
+- **Purchasing**: if fewer than 2 usable numbers exist, `--allow-purchase`
+  is required or the run aborts with a clear message. The recommended
+  path is to run once interactively to provision numbers, then schedule
+  the unattended command (which won't need it again).
+
+## The standalone script
+
+Saving produces a single, self-contained `.py` file with:
+
+- The chosen account's numbers and plan baked in as data.
+- The exact same generation logic as `gen/core.py`, copied in verbatim
+  (single source of truth, no reimplementation, no drift).
+- **No embedded credentials.** It reads the Account SID/Auth Token from
+  two environment variable *names* that are baked in (their values are
+  never written to the file). Run it later with:
+
+  ```bash
+  export VOICEGEN_SID_STAGE=... VOICEGEN_TOKEN_STAGE=...
+  python3 voice_batch_stage_20260826.py
+  ```
+
+Because it's stdlib-only and has no dependency on this repo, it can be
+copied anywhere, shared with a teammate, or dropped into cron/launchd on
+any machine that has network access to the target environment (stage/dev
+require the corporate VPN; prod does not, but prod also isn't something
+you'd want to schedule unattended, that's why the confirmation gate above
+exists in the wizard and the standalone script itself has no bypass for
+it, running it against prod still requires `VOICEGEN_SID_PROD` style env
+vars to have been set deliberately).
+
+## Layout
+
+```
+wizard.py            interactive front-end, also renders standalone scripts
+gen/
+  core.py             all generation logic + reporting (stdlib only, portable)
+  discovery.py        environment detection, number listing/purchase, compliance check
+  safety.py           prod guardrails (hard caps, confirmations)
+```
+
+`gen/core.py` is the single source of truth. The wizard imports it
+directly; the standalone script gets its exact source text concatenated
+in. There's only one implementation of "how to generate a call" anywhere
+in this tool.
+
+## Known limitations
+
+- Generated data is always timestamped "now", there's no way to backfill
+  data for a past day (a Twilio platform constraint, not a tool
+  limitation).
+- The compliance-profile check (`gen/discovery.py`) is best-effort and
+  hasn't been exercised against a real unapproved account in this repo's
+  test history yet, if it ever reports "unknown", treat that as "we don't
+  know", not "it's fine".
+- No scheduling is built in on purpose (see the network-reachability note
+  above), the standalone script is designed to be cron'd/launchd'd by
+  whatever already has access to the target environment.

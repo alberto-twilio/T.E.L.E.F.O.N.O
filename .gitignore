@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+voice_batch_*.json
+voice_batch_*.py
+*.env
+.env
