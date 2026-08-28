@@ -18,13 +18,19 @@ the scripts it produces.
 python3 wizard.py
 ```
 
-You'll be asked for exactly two things: **Account SID** and **Auth Token**.
-Everything else is discovered automatically:
+Both `wizard.py` and `real_call_burst.py` first check for three
+well-known env vars: `DATAGEN_ACCOUNT_SID`, `DATAGEN_ACCOUNT_TOKEN`,
+`DATAGEN_ENVIRONMENT` (one of `prod`/`stage`/`dev`). If all three are
+set, they're used silently, no prompts at all for credentials/tier. If
+any are missing, you're told they're not set and given three ready-to-
+paste template lines (keys only) for any env file, then asked normally.
 
-- **Environment**: tries `api.twilio.com`, `api.stage.twilio.com`, and
-  `api.dev.twilio.com` in turn, whichever authenticates is the account's
-  real host. The wizard reports the detected `friendly_name` and tier
-  before doing anything else.
+Either way, you end up providing **Account SID**, **Auth Token**, and
+**which environment** (prod/stage/dev) these credentials belong to,
+never guessed. The wizard then does exactly one request to confirm the
+account actually exists on that environment's host, and reports the
+`friendly_name` before doing anything else. Everything past that is
+discovered automatically:
 - **Prod is gated hard**: if the detected tier is `prod`, you must type
   `PROD` in capitals to continue. This isn't a flag that can be forgotten,
   it's enforced in code (`gen/safety.py`).
@@ -56,15 +62,22 @@ export VOICEGEN_SID_STAGE=...
 export VOICEGEN_TOKEN_STAGE=...
 python3 wizard.py \
   --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE \
+  --tier stage \
   --categories calls,recordings_transcriptions,conferences \
   --calls 10-60 --recordings-transcriptions 10-60 --conferences 10-60 \
   --regions us1,au1 \
   --mode run
 ```
 
+`--tier` is required in unattended mode, same reasoning as everywhere
+else: there's no interactive menu to fall back on, so it must be stated
+explicitly. A wrong tier fails cleanly (wrong host for these credentials
+authenticates the same way a wrong password would), it never silently
+tries the other two.
+
 Two things are never bypassed by a flag alone:
 
-- **Production**: if the detected account is prod, `--confirm-prod` is
+- **Production**: if the stated tier is prod, `--confirm-prod` is
   required or the run aborts. There's deliberately no way to skip this
   by accident, since there's no interactive prompt to fall back on here.
 - **Purchasing**: if fewer than 2 usable numbers exist, `--allow-purchase`
@@ -90,7 +103,7 @@ or unattended:
 
 ```bash
 python3 real_call_burst.py \
-  --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE \
+  --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE --tier stage \
   --to +34663053910 --count 10 --interval 1.5 --confirm-real-number
 ```
 
@@ -133,7 +146,7 @@ vars to have been set deliberately).
 wizard.py            interactive front-end, also renders standalone scripts
 gen/
   core.py             all generation logic + reporting (stdlib only, portable)
-  discovery.py        environment detection, number listing/purchase, compliance check
+  discovery.py        environment confirmation (given, not guessed), number listing/purchase, compliance check
   safety.py           prod guardrails (hard caps, confirmations)
 ```
 

@@ -9,8 +9,12 @@ Interactive:
     python3 real_call_burst.py
 
 Unattended:
-    python3 real_call_burst.py --sid-env X --token-env Y \\
+    python3 real_call_burst.py --sid-env X --token-env Y --tier stage \\
         --to +34663053910 --count 10 --interval 1.5 --confirm-real-number
+
+The environment (prod/stage/dev) is always stated, never guessed: you
+pick it (interactively, or via --tier), and the script does exactly one
+request to confirm the account actually exists there.
 
 Every path, interactive or unattended, requires an explicit,
 un-skippable confirmation naming the real number before anything is
@@ -34,10 +38,21 @@ def ask(prompt, default=None):
     return val or default
 
 
+def ask_tier():
+    print("\nEnvironment (never guessed, state it explicitly)")
+    for i, t in enumerate(discovery.TIERS, 1):
+        print(f"  {i}. {t}")
+    raw = ask("Select", default=str(discovery.TIERS.index("stage") + 1))
+    return discovery.TIERS[int(raw) - 1]
+
+
 def build_arg_parser():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--sid-env", help="Env var name holding the Account SID. Passing this enables unattended mode.")
     p.add_argument("--token-env", help="Env var name holding the Auth Token.")
+    p.add_argument("--tier", choices=discovery.TIERS,
+                    help="Which environment these credentials belong to. Required in unattended mode, "
+                         "asked interactively otherwise. Never guessed.")
     p.add_argument("--to", help="Real destination phone number, E.164, e.g. +34663053910")
     p.add_argument("--count", type=int, default=5, help="How many calls to place. Default 5.")
     p.add_argument("--interval", type=float, default=1.5, help="Seconds between calls. Default 1.5.")
@@ -53,27 +68,53 @@ def build_arg_parser():
     return p
 
 
-def main():
-    args = build_arg_parser().parse_args()
-
+def resolve_credentials(args):
+    """Returns (account_sid, auth_token, unattended: bool, tier_or_None)."""
     if args.sid_env:
         if not args.token_env:
             sys.exit("--token-env is required when --sid-env is passed.")
         try:
-            account_sid, auth_token = os.environ[args.sid_env], os.environ[args.token_env]
+            return os.environ[args.sid_env], os.environ[args.token_env], True, None
         except KeyError as e:
             sys.exit(f"Env var {e} is not set.")
-        unattended = True
-    else:
-        print("=== Real-number call burst ===\n")
-        account_sid = ask("Account SID")
-        auth_token = getpass.getpass("Auth Token (input hidden): ")
-        unattended = False
 
-    host, tier, info = discovery.detect_environment(account_sid, auth_token)
+    print("=== Real-number call burst ===\n")
+
+    from_env = discovery.resolve_from_datagen_env()
+    if from_env:
+        sid, token, tier = from_env
+        print(f"Using {discovery.DATAGEN_SID_VAR} / {discovery.DATAGEN_TOKEN_VAR} / "
+              f"{discovery.DATAGEN_TIER_VAR} from the environment (tier={tier}).")
+        return sid, token, False, tier
+
+    print(f"{discovery.DATAGEN_SID_VAR} / {discovery.DATAGEN_TOKEN_VAR} / "
+          f"{discovery.DATAGEN_TIER_VAR} are not set.\n")
+    print("Ready to paste into any env file (fill in the values):")
+    discovery.print_datagen_env_template()
+    print()
+    account_sid = ask("Account SID")
+    auth_token = getpass.getpass("Auth Token (input hidden): ")
+    return account_sid, auth_token, False, None
+
+
+def main():
+    args = build_arg_parser().parse_args()
+    account_sid, auth_token, unattended, pre_tier = resolve_credentials(args)
+
+    if unattended:
+        if not args.tier:
+            sys.exit("--tier is required in unattended mode (prod/stage/dev). Never guessed.")
+        tier = args.tier
+    elif pre_tier:
+        tier = pre_tier
+    else:
+        tier = args.tier or ask_tier()
+
+    host, tier, info = discovery.confirm_environment(account_sid, auth_token, tier)
     if not host:
-        sys.exit("Could not authenticate against prod, stage, or dev. Check the credentials.")
-    print(f"Detected: {info.get('friendly_name')}  tier={tier}  host={host}")
+        sys.exit(f"Could not authenticate against {tier} ({discovery.HOST_BY_TIER[tier]}). "
+                  "Check the credentials, or that this is really the right tier.")
+    print(f"Confirmed: {info.get('friendly_name')}  tier={tier}  host={host}")
 
     sid_env = args.sid_env or f"VOICEGEN_SID_{tier.upper()}"
     token_env = args.token_env or f"VOICEGEN_TOKEN_{tier.upper()}"
@@ -129,6 +170,7 @@ def print_repro_command(sid_env, token_env, tier, to_number, count, interval,
     parts = [
         "python3 real_call_burst.py",
         f"--sid-env {sid_env} --token-env {token_env}",
+        f"--tier {tier}",
         f"--to {to_number}",
         f"--count {count}",
         f"--interval {interval}",

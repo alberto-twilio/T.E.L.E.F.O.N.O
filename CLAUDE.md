@@ -42,11 +42,26 @@ not for someone running it.
 
 ## Why the design looks the way it does
 
-- **Environment is auto-detected, never asked.** A wrong API host
-  (`api.twilio.com` vs `.stage.` vs `.dev.`) produces a misleading 401
-  that looks like a bad credential, not a routing problem. Trying all
-  three hosts and using whichever authenticates removes an entire class
-  of confusing failures. See `gen/discovery.py:detect_environment`.
+- **Environment is stated by the user, never guessed.** This used to
+  auto-detect by trying all three hosts and using whichever authenticated
+  (`detect_environment`). Deliberately changed: the caller now says which
+  tier the credentials belong to (a menu interactively, `--tier`
+  unattended), and `confirm_environment` does exactly one request to
+  verify the account actually exists there. A wrong API host
+  (`api.twilio.com` vs `.stage.` vs `.dev.`) still produces the same
+  misleading 401 a bad credential would, that hasn't changed, only who
+  decides which host gets tried has. Don't reintroduce the try-all-three
+  loop, if a new entry point needs environment info, it should ask (or
+  take `--tier`), not guess.
+- **`DATAGEN_ACCOUNT_SID`/`DATAGEN_ACCOUNT_TOKEN`/`DATAGEN_ENVIRONMENT`
+  are a convenience layer, not a third mode.** `resolve_from_datagen_env()`
+  in `gen/discovery.py` only changes *how* credentials/tier get obtained
+  (skip the prompts if all three are already set), it doesn't change
+  interactive vs. unattended behavior elsewhere (categories/counts in
+  `wizard.py`, the real-number confirmation in `real_call_burst.py` all
+  still happen exactly as before). If you add a new entry point, wire
+  this in the same narrow way, don't let it grow into a second unattended
+  mode competing with `--sid-env`/`--token-env`.
 - **No scheduler is built in.** `api.stage.twilio.com` / `api.dev.twilio.com`
   resolve to internal addresses reachable only from the corporate VPN, so
   a cloud-hosted scheduler (GitHub Actions, Lambda, etc.) can't reach them
