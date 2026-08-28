@@ -28,6 +28,13 @@ not for someone running it.
   is unnecessary this one time. If you add a new entry point (e.g. a
   future non-interactive/cron mode), route it through `safety.py` too,
   don't reimplement the check inline.
+- **Real external numbers only ever get dialed from `real_call_burst.py` /
+  `gen/real_number.py`, never from `wizard.py` or `gen/core.py`.** That
+  separation is the whole safety model for real numbers: it's opt-in by
+  which script you run, not a flag inside the normal flow. Don't add a
+  "use a real number for this batch" option to the random-batch path,
+  and don't let `gen/core.py` import from `gen/real_number.py` or vice
+  versa in a way that blurs which one is doing the dialing.
 - **One implementation of "how to generate a call/recording/conference"
   anywhere in this repo.** `wizard.py` imports `gen/core.py` directly;
   the standalone script gets its exact source text. Don't add a second

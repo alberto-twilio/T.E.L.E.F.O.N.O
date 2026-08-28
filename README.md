@@ -72,6 +72,36 @@ Two things are never bypassed by a flag alone:
   path is to run once interactively to provision numbers, then schedule
   the unattended command (which won't need it again).
 
+## Real-number call burst (`real_call_burst.py`)
+
+Everything above only ever touches numbers the account owns. Some
+statuses genuinely can't be produced that way, a `voice_url`-backed
+number auto-answers instantly, so there's no ring window for `no-answer`,
+no way to occupy the line for `busy`, and no device to go
+unreachable/airplane-mode. This is a **separate, explicitly-named tool**
+for exactly that gap, it is never reachable from `wizard.py`'s normal
+flow and never embedded into any standalone script that flow emits.
+
+```bash
+python3 real_call_burst.py
+```
+
+or unattended:
+
+```bash
+python3 real_call_burst.py \
+  --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE \
+  --to +34663053910 --count 10 --interval 1.5 --confirm-real-number
+```
+
+Every path requires an explicit, un-skippable confirmation naming the
+real number before anything is dialed, typing the number back
+interactively, or `--confirm-real-number` unattended. There is no default
+or quiet mode. Verified in practice: a burst of calls a couple seconds
+apart against a real phone reliably produces a natural mix of
+`completed`, `busy` (whenever the line's already occupied by a previous
+call in the burst), and `no-answer`.
+
 ## The standalone script
 
 Saving produces a single, self-contained `.py` file with:
