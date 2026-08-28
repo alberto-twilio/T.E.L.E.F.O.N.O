@@ -1,30 +1,59 @@
 """
-Preflight discovery: which environment do these credentials belong to,
-does the account already have voice-capable numbers, and (if not) can it
-even purchase one (Trust Hub compliance profile approved)?
+Preflight discovery: confirming the environment these credentials belong
+to, whether the account already has voice-capable numbers, and (if not)
+whether it can even purchase one (Trust Hub compliance profile approved).
 
 Only used by the interactive wizard, never embedded in the standalone
 emitted script (that script gets numbers baked in at generation time).
 """
+import os
 from .core import request, build_auth_header
 
-HOSTS = ["api.twilio.com", "api.stage.twilio.com", "api.dev.twilio.com"]
-TIER_BY_HOST = {
-    "api.twilio.com": "prod",
-    "api.stage.twilio.com": "stage",
-    "api.dev.twilio.com": "dev",
+HOST_BY_TIER = {
+    "prod": "api.twilio.com",
+    "stage": "api.stage.twilio.com",
+    "dev": "api.dev.twilio.com",
 }
+TIERS = list(HOST_BY_TIER)
 
-def detect_environment(account_sid, auth_token):
-    """Try each known host; the one that authenticates is the account's
-    real home (wrong host reliably 401s, per hard-won experience).
-    Returns (host, tier, account_info) or (None, None, None)."""
+DATAGEN_SID_VAR = "DATAGEN_ACCOUNT_SID"
+DATAGEN_TOKEN_VAR = "DATAGEN_ACCOUNT_TOKEN"
+DATAGEN_TIER_VAR = "DATAGEN_ENVIRONMENT"
+
+
+def resolve_from_datagen_env():
+    """Well-known env var convenience: if DATAGEN_ACCOUNT_SID,
+    DATAGEN_ACCOUNT_TOKEN, and DATAGEN_ENVIRONMENT (one of TIERS) are all
+    set, use them and skip asking. Returns (account_sid, auth_token, tier)
+    or None if any are missing or the tier value isn't recognized."""
+    sid = os.environ.get(DATAGEN_SID_VAR)
+    token = os.environ.get(DATAGEN_TOKEN_VAR)
+    tier = os.environ.get(DATAGEN_TIER_VAR)
+    if sid and token and tier and tier in TIERS:
+        return sid, token, tier
+    return None
+
+
+def print_datagen_env_template():
+    """Three lines, ready to paste into any env file, keys only."""
+    print(f"export {DATAGEN_SID_VAR}=")
+    print(f"export {DATAGEN_TOKEN_VAR}=")
+    print(f"export {DATAGEN_TIER_VAR}=")
+
+def confirm_environment(account_sid, auth_token, tier):
+    """The caller states which environment these credentials belong to
+    (never guessed). This does exactly one GET, against that tier's host,
+    to confirm the account actually exists/authenticates there. A wrong
+    host reliably 401s, per hard-won experience, so a failure here means
+    either the credentials or the chosen tier is wrong, not necessarily
+    which one.
+    Returns (host, tier, account_info) or (None, tier, None)."""
+    host = HOST_BY_TIER[tier]
     auth_header = build_auth_header(account_sid, auth_token)
-    for host in HOSTS:
-        info = request(host, account_sid, auth_header, "GET", ".json")
-        if not info.get("error"):
-            return host, TIER_BY_HOST[host], info
-    return None, None, None
+    info = request(host, account_sid, auth_header, "GET", ".json")
+    if info.get("error"):
+        return None, tier, None
+    return host, tier, info
 
 def list_voice_numbers(host, account_sid, auth_token):
     auth_header = build_auth_header(account_sid, auth_token)
