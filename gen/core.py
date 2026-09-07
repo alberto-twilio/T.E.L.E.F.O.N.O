@@ -44,6 +44,50 @@ def request(host, account_sid, auth_header, method, path, data=None):
 def twimlet(twiml):
     return "https://twimlets.com/echo?Twiml=" + urllib.parse.quote(twiml)
 
+# --------------------------------------------------------------- specs ----
+# Every plan value below is a SPEC (a string like "10-60" or "0"), never a
+# pre-rolled number. Resolving a spec (random.randint) must only happen
+# inside the run_* functions, at actual execution time. This is what makes
+# a saved standalone script re-roll fresh every time it's run, instead of
+# baking in whatever number happened to be rolled when it was generated.
+
+def parse_count_spec(raw):
+    """raw: '0', 'N', or 'min-max'. Returns a freshly-rolled int."""
+    raw = str(raw).strip()
+    if raw in ("0", ""):
+        return 0
+    if "-" in raw:
+        lo, hi = raw.split("-", 1)
+        return random.randint(int(lo), int(hi))
+    return int(raw)
+
+def parse_duration_token(token):
+    """'30s' -> 30, '3m' -> 180, '90' -> 90 (bare seconds)."""
+    token = str(token).strip().lower()
+    if token.endswith("m"):
+        return int(round(float(token[:-1]) * 60))
+    if token.endswith("s"):
+        return int(round(float(token[:-1])))
+    return int(round(float(token)))
+
+def parse_duration_range_spec(raw):
+    """raw: '0'/''/None (disabled) or 'min-max' e.g. '1s-3m', '30s-90s',
+    or bare seconds '10-60'. Returns a freshly-rolled duration in seconds,
+    or None if disabled."""
+    if not raw:
+        return None
+    raw = str(raw).strip()
+    if raw in ("0", ""):
+        return None
+    lo_raw, hi_raw = raw.split("-", 1)
+    lo, hi = parse_duration_token(lo_raw), parse_duration_token(hi_raw)
+    if hi < lo:
+        lo, hi = hi, lo
+    return random.randint(lo, hi)
+
+def spec_enabled(spec):
+    return spec not in (None, "", "0", 0)
+
 # ------------------------------------------------------------- content ----
 
 PASSAGES = [
@@ -109,7 +153,8 @@ def create_call(ctx, from_num, to_num, twiml):
                    "POST", "/Calls.json",
                    {"From": from_num, "To": to_num, "Url": twimlet(twiml)})
 
-def run_calls(ctx, n, weights=(0.55, 0.25, 0.20)):
+def run_calls(ctx, n_spec, weights=(0.55, 0.25, 0.20), duration_spec=None):
+    n = parse_count_spec(n_spec)
     numbers = ctx["numbers"]
     pairs = make_pairs(numbers)
     call_types = random.choices(["completed", "failed", "canceled"], weights=list(weights), k=n)
@@ -118,11 +163,25 @@ def run_calls(ctx, n, weights=(0.55, 0.25, 0.20)):
         frm, to = pairs[i % len(pairs)]
         entry = {"index": i, "type": ctype}
         if ctype == "completed":
-            long_form = random.random() < 0.15
-            text = random.choice(PASSAGES) if long_form else random.choice(SHORT_TEXTS)
-            set_voice_url(ctx, to["sid"], f"<Response><Say>{text}</Say><Hangup/></Response>")
-            r = create_call(ctx, frm["phone"], to["phone"], "<Response><Say>Caller side.</Say><Hangup/></Response>")
-            entry["long_form"] = long_form
+            # Each completed call rolls its own target duration independently,
+            # a fresh random.randint every call, not just every run.
+            target_seconds = parse_duration_range_spec(duration_spec)
+            if target_seconds is not None:
+                text = random.choice(SHORT_TEXTS)
+                # Callee's pause is the exact target; caller's is a few
+                # seconds longer, so the shorter (callee) side governs when
+                # the call actually ends, per the precise-duration recipe.
+                set_voice_url(ctx, to["sid"],
+                              f'<Response><Say>{text}</Say><Pause length="{target_seconds}"/><Hangup/></Response>')
+                r = create_call(ctx, frm["phone"], to["phone"],
+                                 f'<Response><Say>Caller side.</Say><Pause length="{target_seconds + 5}"/><Hangup/></Response>')
+                entry["target_duration_seconds"] = target_seconds
+            else:
+                long_form = random.random() < 0.15
+                text = random.choice(PASSAGES) if long_form else random.choice(SHORT_TEXTS)
+                set_voice_url(ctx, to["sid"], f"<Response><Say>{text}</Say><Hangup/></Response>")
+                r = create_call(ctx, frm["phone"], to["phone"], "<Response><Say>Caller side.</Say><Hangup/></Response>")
+                entry["long_form"] = long_form
         elif ctype == "failed":
             r = create_call(ctx, frm["phone"], "+19999999999", "<Response><Hangup/></Response>")
         else:  # canceled
@@ -133,11 +192,13 @@ def run_calls(ctx, n, weights=(0.55, 0.25, 0.20)):
         entry["sid"] = r.get("sid")
         entry["error"] = r.get("body") if r.get("error") else None
         out.append(entry)
-        print(f"[call {i+1}/{n}] {ctype} sid={entry['sid']} err={entry['error']}", flush=True)
+        duration_note = f" target_duration={entry['target_duration_seconds']}s" if "target_duration_seconds" in entry else ""
+        print(f"[call {i+1}/{n}] {ctype} sid={entry['sid']}{duration_note} err={entry['error']}", flush=True)
         time.sleep(1.3)
     return out
 
-def run_recordings_transcriptions(ctx, n):
+def run_recordings_transcriptions(ctx, n_spec):
+    n = parse_count_spec(n_spec)
     numbers = ctx["numbers"]
     pairs = make_pairs(numbers)
     out = []
@@ -158,7 +219,8 @@ def run_recordings_transcriptions(ctx, n):
         time.sleep(1.3)
     return out
 
-def run_conferences(ctx, n, regions=None):
+def run_conferences(ctx, n_spec, regions=None):
+    n = parse_count_spec(n_spec)
     numbers = ctx["numbers"]
     tag = datetime.date.today().strftime("%Y%m%d")
     out = []
@@ -199,18 +261,25 @@ def run_conferences(ctx, n, regions=None):
     return out
 
 def run_batch(ctx, plan):
-    """plan: {"calls": N, "recordings_transcriptions": N, "conferences": N,
-              "conference_regions": [str,...] or None}. 0/absent = skip category."""
+    """plan holds SPECS, not pre-rolled numbers, e.g.
+    {"calls": "10-60", "recordings_transcriptions": "0", "conferences": "5",
+     "conference_regions": [str,...] or None, "call_duration": "1s-3m" or None}.
+    Every spec is resolved fresh inside the corresponding run_* function,
+    at actual execution time. Run this function twice and you get two
+    independent random outcomes, that's deliberate: it's what makes a
+    saved standalone script re-roll on every run instead of reproducing
+    whatever was rolled when it was generated.
+    "0"/0/absent/None = skip category."""
     results = {"planned": plan}
-    if plan.get("calls"):
-        results["calls"] = run_calls(ctx, plan["calls"])
+    if spec_enabled(plan.get("calls")):
+        results["calls"] = run_calls(ctx, plan["calls"], duration_spec=plan.get("call_duration"))
     else:
         results["calls"] = []
-    if plan.get("recordings_transcriptions"):
+    if spec_enabled(plan.get("recordings_transcriptions")):
         results["recordings_transcriptions"] = run_recordings_transcriptions(ctx, plan["recordings_transcriptions"])
     else:
         results["recordings_transcriptions"] = []
-    if plan.get("conferences"):
+    if spec_enabled(plan.get("conferences")):
         results["conferences"] = run_conferences(ctx, plan["conferences"], plan.get("conference_regions"))
     else:
         results["conferences"] = []
@@ -226,6 +295,10 @@ def poll_results(ctx, results):
             continue
         r = request(ctx["host"], ctx["account_sid"], ctx["auth_header"], "GET", f"/Calls/{c['sid']}.json")
         call_status[r.get("status", "unknown")] += 1
+        # Mutates the entry in place so the actual duration lands in the
+        # saved results JSON too, next to whatever target was set at fire
+        # time, no separate lookup needed to compare the two later.
+        c["actual_duration_seconds"] = int(r.get("duration") or 0)
 
     rec_status = Counter()
     trans_status = Counter()
@@ -260,12 +333,20 @@ def poll_results(ctx, results):
         "conferences": dict(conf_status),
     }
 
-def print_report(tally, planned):
+def print_report(tally, planned, results):
     print("\n--- Final tally ---")
-    print(f"Calls:          {tally['calls']}  (planned {planned.get('calls', 0)})")
+    print(f"Calls:          {tally['calls']}  (spec {planned.get('calls', 0)}, rolled {len(results['calls'])})")
+
+    with_target = [c for c in results.get("calls", []) if "target_duration_seconds" in c]
+    if with_target:
+        print("  Completed call durations (target -> actual):")
+        for c in with_target:
+            actual = c.get("actual_duration_seconds", "?")
+            print(f"    {c['sid']}: {c['target_duration_seconds']}s -> {actual}s")
+
     print(f"Recordings:     {tally['recordings']}")
     print(f"Transcriptions: {tally['transcriptions']}")
-    print(f"Conferences:    {tally['conferences']}  (planned {planned.get('conferences', 0)})")
+    print(f"Conferences:    {tally['conferences']}  (spec {planned.get('conferences', 0)}, rolled {len(results['conferences'])})")
 
 # --------------------------------------------------------- standalone run --
 
@@ -288,7 +369,9 @@ def run(config):
 
     if config.get("poll_after", True):
         tally = poll_results(ctx, results)
-        print_report(tally, config["plan"])
+        with open(results_path, "w") as f:
+            json.dump(results, f, indent=2)  # re-save: poll_results adds actual_duration_seconds in place
+        print_report(tally, config["plan"], results)
 
 def main():
     run(CONFIG)  # noqa: F821 -- CONFIG is prepended above this file's source
