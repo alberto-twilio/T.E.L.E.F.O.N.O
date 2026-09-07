@@ -39,9 +39,29 @@ not for someone running it.
   anywhere in this repo.** `wizard.py` imports `gen/core.py` directly;
   the standalone script gets its exact source text. Don't add a second
   copy of the generation logic for "the simple case."
+- **A `plan` value is a SPEC (a string), never a pre-rolled number.**
+  `parse_count_spec()`/`parse_duration_range_spec()` in `gen/core.py`
+  resolve a spec at actual execution time, inside `run_calls`/
+  `run_recordings_transcriptions`/`run_conferences`, not before. Don't
+  add code anywhere (`wizard.py`, a future entry point) that calls
+  `random.randint` on a range and stores the *result* in a plan/config,
+  that's exactly the bug this was built to avoid: it would freeze one
+  number into a saved standalone script forever instead of re-rolling
+  fresh every time that script runs. If you need to show a human what a
+  plan will do before running it, print the spec, not a preview roll.
 
 ## Why the design looks the way it does
 
+- **`gen/safety.py`'s prod cap clamps the spec itself, not a resolved
+  value.** `_cap_spec()` rewrites e.g. `"10-60"` down to `"5-5"` (or
+  `"1-30"` for `call_duration`), it doesn't just cap whatever number this
+  one run happened to roll. This is a direct consequence of specs being
+  resolved at execution time: `gen/core.py` has no dependency on
+  `gen/safety.py` (a standalone script never imports it), so if the cap
+  only touched a resolved value, a saved standalone script targeting prod
+  would re-roll inside the *original, uncapped* range on every future
+  run, silently defeating the cap. If you touch `_cap_spec`, keep it
+  operating on the spec string, not a rolled number.
 - **Environment is stated by the user, never guessed.** This used to
   auto-detect by trying all three hosts and using whichever authenticated
   (`detect_environment`). Deliberately changed: the caller now says which
@@ -99,6 +119,52 @@ not for someone running it.
 - **`twimlets.com/echo` is the only TwiML hosting used.** There's no
   hosted TwiML endpoint of our own. Keep individual `<Say>` blocks to a
   few hundred characters, longer inline TwiML risks URL-length truncation.
+- **Call duration is a spec too (`call_duration`), resolved per-call, not
+  per-batch.** `run_calls` calls `parse_duration_range_spec(duration_spec)`
+  independently for every completed call, so a 10-call batch with
+  `1s-3m` produces 10 different durations, not one duration reused 10
+  times. It targets the duration via the precise-duration `<Pause>`
+  recipe (callee's pause is the exact target, caller's is 5s longer so
+  the callee's shorter pause governs when the call actually ends). When
+  `call_duration` is unset/`0`, calls fall back to the older
+  passage-based variety instead, that fallback path must keep working,
+  don't delete it.
+- **Target and actual duration are both logged, on purpose.** The target
+  is known at fire time and printed immediately
+  (`target_duration_seconds` on the entry); `poll_results` mutates the
+  same entry in place to add `actual_duration_seconds` once Twilio
+  reports it, and `gen/core.py:run()` re-saves the results JSON after
+  polling specifically so the actual duration lands on disk too, not
+  just target. `print_report` shows target -> actual per call. If you
+  add a new per-call attribute that's only known after polling, follow
+  this same mutate-in-place-then-resave pattern rather than inventing a
+  parallel results structure.
+
+## Defaults
+
+Default count ranges (interactive prompt defaults, `--calls`/
+`--recordings-transcriptions`/`--conferences` CLI defaults, all three
+kept in sync in `wizard.py`): calls `10-30`, recordings/transcriptions
+`5-10`, conferences `5-10`. Recordings/conferences are cheaper defaults
+than calls on purpose, each one does more polling/setup work per unit
+(a recording needs a transcription to also complete; a conference needs
+two legs plus an explicit end-call), so a "10-30"-sized batch of those
+would take noticeably longer for comparable insight. `call_duration`
+defaults to `1s-3m`. If you change one of these, update the CLI default,
+the interactive prompt default, and both example commands in `README.md`
+together, they've drifted out of sync before.
+
+## `select_multi` accepts names, not just indices
+
+`select_multi` (used for both category and conference-region selection)
+accepts a comma-separated mix of index numbers *and* the option's literal
+text, case-insensitively (e.g. `us1` or `1` both select the same thing).
+This exists because typing the value you can already see on screen is at
+least as natural as typing its position, and a typo used to crash with a
+raw Python traceback (`ValueError` from `int()`) instead of a clear
+message. If you touch this function, keep both entry forms working, and
+keep failing on a genuinely invalid token as a clean `sys.exit` with the
+valid options listed, not an unhandled exception.
 
 ## Numbers, pairing, and regions
 
@@ -118,7 +184,7 @@ There's no test framework here on purpose (small tool, stdlib only). To
 validate a change:
 
 ```bash
-python3 -m py_compile gen/core.py gen/discovery.py gen/safety.py wizard.py
+python3 -m py_compile gen/core.py gen/discovery.py gen/safety.py gen/real_number.py wizard.py real_call_burst.py
 ```
 
 For anything touching pairing/region logic, exercise the pure functions
@@ -136,6 +202,6 @@ never validate a change against prod.
   to make testing more convenient, temporarily or otherwise.
 - Don't write a "quick mode" that skips the compliance-profile check.
 - Don't assume this repo's own scratchpad/working directory is durable,
-  it's not committed to git (there's no `.git` here yet), so anything
-  meant to persist across sessions belongs in a file this README/CLAUDE.md
-  points at explicitly, not in an untracked working file.
+  uncommitted or unpushed state has genuinely been lost here before
+  (across a session rewind, mid-development). Commit and push anything
+  meant to persist, don't rely on an untracked working file.

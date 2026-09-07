@@ -13,7 +13,8 @@ Two modes, same code path:
       python3 wizard.py --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE \\
           --tier stage \\
           --categories calls,recordings_transcriptions,conferences \\
-          --calls 10-60 --recordings-transcriptions 10-60 --conferences 10-60 \\
+          --calls 10-30 --call-duration 1s-3m \\
+          --recordings-transcriptions 5-10 --conferences 5-10 \\
           --regions us1,au1 --mode run
 
   The environment (prod/stage/dev) is always stated, never guessed: you
@@ -30,7 +31,6 @@ Requires: Python 3, stdlib only. No pip install needed.
 import os
 import sys
 import json
-import random
 import getpass
 import argparse
 import datetime
@@ -55,32 +55,40 @@ def ask(prompt, default=None):
     return val or default
 
 
-def parse_count_spec(raw):
-    """raw: '0', 'N', or 'min-max'. Returns the rolled int count."""
-    raw = str(raw).strip()
-    if raw in ("0", ""):
-        return 0
-    if "-" in raw:
-        lo, hi = raw.split("-", 1)
-        return random.randint(int(lo), int(hi))
-    return int(raw)
-
-
-def ask_count_spec(label, default_range=(10, 60)):
-    raw = ask(f"{label} count: fixed number, a 'min-max' range, or 0 to skip",
-              default=f"{default_range[0]}-{default_range[1]}")
-    return raw, parse_count_spec(raw)
+def ask_count_spec(label, default_range=(10, 30)):
+    """Returns the raw spec string, unresolved. Rolling happens once, at
+    actual execution time, inside gen/core.py, not here, so the same spec
+    re-rolls fresh on every run instead of freezing one number forever."""
+    return ask(f"{label} count: fixed number, a 'min-max' range, or 0 to skip",
+               default=f"{default_range[0]}-{default_range[1]}")
 
 
 def select_multi(label, options):
+    """Accepts either the numbered index or the option's literal text
+    (case-insensitive), comma-separated, or 'all'. Typing the value you
+    can see ("us1") is at least as natural as typing its index, and a
+    typo shouldn't crash with a raw traceback."""
     print(f"\n{label}")
     for i, opt in enumerate(options, 1):
         print(f"  {i}. {opt}")
-    raw = ask("Select (comma-separated numbers, or 'all')", default="all")
+    raw = ask("Select (comma-separated numbers or names, or 'all')", default="all")
     if raw.lower() == "all":
         return list(options)
-    idxs = [int(x.strip()) for x in raw.split(",") if x.strip()]
-    return [options[i - 1] for i in idxs]
+
+    lower_options = [o.lower() for o in options]
+    chosen, invalid = [], []
+    for token in (t.strip() for t in raw.split(",") if t.strip()):
+        if token.isdigit() and 1 <= int(token) <= len(options):
+            chosen.append(options[int(token) - 1])
+        elif token.lower() in lower_options:
+            chosen.append(options[lower_options.index(token.lower())])
+        else:
+            invalid.append(token)
+
+    if invalid:
+        sys.exit(f"Invalid selection: {', '.join(invalid)}. "
+                  f"Use a number (1-{len(options)}) or one of: {', '.join(options)}.")
+    return chosen
 
 
 def ask_tier():
@@ -99,9 +107,13 @@ def build_arg_parser():
                     help="Which environment these credentials belong to. Required in unattended mode, "
                          "asked interactively otherwise. Never guessed.")
     p.add_argument("--categories", help="Comma list of: " + ",".join(ALL_CATEGORIES) + " (default: all)")
-    p.add_argument("--calls", default="10-60", help="Fixed N, 'min-max', or 0 to skip. Default 10-60.")
-    p.add_argument("--recordings-transcriptions", dest="recordings_transcriptions", default="10-60")
-    p.add_argument("--conferences", default="10-60")
+    p.add_argument("--calls", default="10-30", help="Fixed N, 'min-max', or 0 to skip. Default 10-30.")
+    p.add_argument("--call-duration", dest="call_duration", default="1s-3m",
+                    help="Target duration range for completed calls, e.g. '1s-3m', '30s-90s', "
+                         "or a bare-seconds range like '10-60'. 0 disables (old passage-based "
+                         "variety instead). Default 1s-3m. Each call rolls its own duration.")
+    p.add_argument("--recordings-transcriptions", dest="recordings_transcriptions", default="5-10")
+    p.add_argument("--conferences", default="5-10")
     p.add_argument("--regions", default="", help="Comma list of conference regions, e.g. us1,au1,ie1")
     p.add_argument("--mode", choices=["run", "save", "both"], default="run")
     p.add_argument("--out", help="Output path for standalone script (save/both mode)")
@@ -191,56 +203,56 @@ def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase):
 
 
 def build_plan(args, unattended):
+    """Returns a plan of SPECS (strings), never pre-rolled numbers, see
+    gen/core.py for why: rolling must happen at actual execution time so
+    the same plan re-rolls fresh on every run, including a saved
+    standalone script run again later."""
     if unattended:
         categories = args.categories.split(",") if args.categories else ALL_CATEGORIES
-        specs = {
-            "calls": args.calls,
-            "recordings_transcriptions": args.recordings_transcriptions,
-            "conferences": args.conferences,
+        plan = {
+            "calls": args.calls if "calls" in categories else "0",
+            "call_duration": args.call_duration if "calls" in categories else None,
+            "recordings_transcriptions": args.recordings_transcriptions if "recordings_transcriptions" in categories else "0",
+            "conferences": args.conferences if "conferences" in categories else "0",
         }
         regions_raw = args.regions
         chosen_regions = [r for r in regions_raw.split(",") if r] if regions_raw else []
+        plan["conference_regions"] = chosen_regions or None
     else:
         categories = select_multi("Categories", ALL_CATEGORIES)
-        specs = {"calls": "0", "recordings_transcriptions": "0", "conferences": "0"}
+        plan = {"calls": "0", "call_duration": None, "recordings_transcriptions": "0",
+                 "conferences": "0", "conference_regions": None}
         if "calls" in categories:
-            specs["calls"], _ = ask_count_spec("Calls")
+            plan["calls"] = ask_count_spec("Calls")
+            plan["call_duration"] = ask(
+                "Call duration range for completed calls (e.g. 1s-3m), or 0 to disable",
+                default="1s-3m")
         if "recordings_transcriptions" in categories:
-            specs["recordings_transcriptions"], _ = ask_count_spec("Recordings/Transcriptions")
-        chosen_regions = []
+            plan["recordings_transcriptions"] = ask_count_spec("Recordings/Transcriptions", default_range=(5, 10))
         if "conferences" in categories:
-            specs["conferences"], _ = ask_count_spec("Conferences")
+            plan["conferences"] = ask_count_spec("Conferences", default_range=(5, 10))
             picked = select_multi("Conference regions (optional)", REGIONS + ["(none)"])
             chosen_regions = [r for r in picked if r != "(none)"]
+            plan["conference_regions"] = chosen_regions or None
 
-    plan = {
-        "calls": parse_count_spec(specs["calls"]) if "calls" in categories else 0,
-        "recordings_transcriptions": parse_count_spec(specs["recordings_transcriptions"]) if "recordings_transcriptions" in categories else 0,
-        "conferences": parse_count_spec(specs["conferences"]) if "conferences" in categories else 0,
-        "conference_regions": chosen_regions or None,
-    }
-    specs_used = {
-        "categories": categories,
-        "calls": specs["calls"] if "calls" in categories else "0",
-        "recordings_transcriptions": specs["recordings_transcriptions"] if "recordings_transcriptions" in categories else "0",
-        "conferences": specs["conferences"] if "conferences" in categories else "0",
-        "regions": chosen_regions,
-    }
-    return plan, specs_used
+    return plan
 
 
-def print_repro_command(args, sid_env, token_env, tier, specs_used, purchased_any, out_path, mode):
+def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode):
+    categories = [c for c in ALL_CATEGORIES if plan.get(c, "0") not in (None, "0", 0)]
     parts = [
         "python3 wizard.py",
         f"--sid-env {sid_env} --token-env {token_env}",
         f"--tier {tier}",
-        f"--categories {','.join(specs_used['categories'])}",
-        f"--calls {specs_used['calls']}",
-        f"--recordings-transcriptions {specs_used['recordings_transcriptions']}",
-        f"--conferences {specs_used['conferences']}",
+        f"--categories {','.join(categories)}",
+        f"--calls {plan.get('calls', '0')}",
+        f"--recordings-transcriptions {plan.get('recordings_transcriptions', '0')}",
+        f"--conferences {plan.get('conferences', '0')}",
     ]
-    if specs_used["regions"]:
-        parts.append(f"--regions {','.join(specs_used['regions'])}")
+    if plan.get("call_duration"):
+        parts.append(f"--call-duration {plan['call_duration']}")
+    if plan.get("conference_regions"):
+        parts.append(f"--regions {','.join(plan['conference_regions'])}")
     parts.append(f"--mode {mode}")
     if mode in ("save", "both") and out_path:
         parts.append(f"--out {out_path}")
@@ -309,7 +321,7 @@ def main():
     numbers, purchased_any = handle_numbers(host, account_sid, auth_token, unattended, args.allow_purchase)
     print(f"\nUsing {len(numbers)} number(s): {', '.join(n['phone'] for n in numbers)}")
 
-    plan, specs_used = build_plan(args, unattended)
+    plan = build_plan(args, unattended)
     plan, notes = safety.cap_plan_for_tier(host, plan)
     for n in notes:
         print(f"NOTE: {n}")
@@ -350,7 +362,7 @@ def main():
         print(f"It reads credentials from env vars {sid_env} / {token_env} (not embedded).")
 
     if not unattended:
-        print_repro_command(args, sid_env, token_env, tier, specs_used, purchased_any, out_path, mode)
+        print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode)
 
 
 if __name__ == "__main__":

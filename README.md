@@ -42,9 +42,19 @@ discovered automatically:
 - **Purchases** always get their own explicit `YES` confirmation, shown
   with the exact numbers about to be bought.
 
-Then you pick categories, counts (fixed or a random range), and, for
-conferences, optional regions, all via short numbered menus, not a wall
-of CLI flags.
+Then you pick categories, counts (fixed or a random range), a call
+duration range for completed calls (e.g. `1s-3m`, more realistic
+duration variety for Insights charts than the old fixed-ish durations),
+and, for conferences, optional regions, all via short numbered menus,
+not a wall of CLI flags.
+
+**Every random value, counts and call duration alike, is a spec, not a
+pre-rolled number.** `"10-60"` is stored as-is and only resolved
+(`random.randint`) at the moment a batch actually runs, inside
+`gen/core.py`. This matters most for a saved standalone script: run it
+five times and you get five independent random outcomes, not the same
+number forever because that's what happened to get rolled when it was
+generated.
 
 At the end you choose to run the batch now, save it as a standalone
 script, or both. Every interactive run finishes by printing the exact
@@ -64,10 +74,17 @@ python3 wizard.py \
   --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE \
   --tier stage \
   --categories calls,recordings_transcriptions,conferences \
-  --calls 10-60 --recordings-transcriptions 10-60 --conferences 10-60 \
+  --calls 10-30 --call-duration 1s-3m \
+  --recordings-transcriptions 5-10 --conferences 5-10 \
   --regions us1,au1 \
   --mode run
 ```
+
+`--call-duration` only affects completed calls (the others have no
+meaningful duration to control), accepts `s`/`m` suffixes or bare
+seconds, and `0` disables it in favor of the old passage-based variety.
+Each completed call rolls its own duration independently, not one value
+for the whole batch.
 
 `--tier` is required in unattended mode, same reasoning as everywhere
 else: there's no interactive menu to fall back on, so it must be stated
