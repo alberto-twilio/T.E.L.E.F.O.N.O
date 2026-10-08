@@ -34,6 +34,16 @@ discovered automatically:
 - **Prod is gated hard**: if the detected tier is `prod`, you must type
   `PROD` in capitals to continue. This isn't a flag that can be forgotten,
   it's enforced in code (`gen/safety.py`).
+- **Prod is capped at 30 per category** (calls,
+  recordings/transcriptions, conferences) **and 30s per call**
+  (`--call-duration`). The spec itself is clamped (e.g. `10-60` becomes
+  `10-30`, `1s-3m` becomes `1-30`), so a saved standalone script stays
+  capped on every future run too, and each change is reported as a
+  `NOTE:` before the plan is printed. The limits are shown in the
+  environment menu and in the `PROD` confirmation banner. Pass
+  `--no-prod-cap` to skip both, e.g. `python3 wizard.py --no-prod-cap`.
+  It only lifts the caps; the `PROD` confirmation (or `--confirm-prod`)
+  is still required.
 - **Numbers**: lists existing voice-capable numbers. If there are fewer
   than 2, it checks whether the account's Trust Hub compliance profile is
   approved *before* attempting a purchase (a profile that isn't approved
@@ -97,6 +107,9 @@ Two things are never bypassed by a flag alone:
 - **Production**: if the stated tier is prod, `--confirm-prod` is
   required or the run aborts. There's deliberately no way to skip this
   by accident, since there's no interactive prompt to fall back on here.
+  The prod caps (30 per category, 30s per call) also apply here; add `--no-prod-cap`
+  alongside `--confirm-prod` to skip it. The printed repro command
+  includes `--no-prod-cap` when the interactive run used it.
 - **Purchasing**: if fewer than 2 usable numbers exist, `--allow-purchase`
   is required or the run aborts with a clear message. The recommended
   path is to run once interactively to provision numbers, then schedule
@@ -164,7 +177,7 @@ wizard.py            interactive front-end, also renders standalone scripts
 gen/
   core.py             all generation logic + reporting (stdlib only, portable)
   discovery.py        environment confirmation (given, not guessed), number listing/purchase, compliance check
-  safety.py           prod guardrails (hard caps, confirmations)
+  safety.py           prod guardrails (30 per category / 30s per call caps, confirmations)
 ```
 
 `gen/core.py` is the single source of truth. The wizard imports it

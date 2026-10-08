@@ -94,7 +94,9 @@ def select_multi(label, options):
 def ask_tier():
     print("\nEnvironment (never guessed, state it explicitly)")
     for i, t in enumerate(discovery.TIERS, 1):
-        print(f"  {i}. {t}")
+        note = (f"  (max {safety.PROD_MAX_PER_CATEGORY} per category, "
+                f"{safety.PROD_MAX_CALL_DURATION_SECONDS}s per call, unless --no-prod-cap)") if t == "prod" else ""
+        print(f"  {i}. {t}{note}")
     raw = ask("Select", default=str(discovery.TIERS.index("stage") + 1))
     return discovery.TIERS[int(raw) - 1]
 
@@ -119,6 +121,10 @@ def build_arg_parser():
     p.add_argument("--out", help="Output path for standalone script (save/both mode)")
     p.add_argument("--confirm-prod", action="store_true",
                     help="Required if the detected account is production. No interactive prompt exists in unattended mode.")
+    p.add_argument("--no-prod-cap", dest="no_prod_cap", action="store_true",
+                    help=f"Skip the prod caps ({safety.PROD_MAX_PER_CATEGORY} per category, "
+                         f"{safety.PROD_MAX_CALL_DURATION_SECONDS}s per call). "
+                         "The PROD confirmation (or --confirm-prod) is still required.")
     p.add_argument("--allow-purchase", action="store_true",
                     help="Required if fewer than 2 usable numbers exist and a purchase would be needed.")
     return p
@@ -258,6 +264,8 @@ def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path,
         parts.append(f"--out {out_path}")
     if tier == "prod":
         parts.append("--confirm-prod")
+        if args.no_prod_cap:
+            parts.append("--no-prod-cap")
     if purchased_any:
         parts.append("--allow-purchase  # only needed again if numbers drop below 2")
 
@@ -322,7 +330,7 @@ def main():
     print(f"\nUsing {len(numbers)} number(s): {', '.join(n['phone'] for n in numbers)}")
 
     plan = build_plan(args, unattended)
-    plan, notes = safety.cap_plan_for_tier(host, plan)
+    plan, notes = safety.cap_plan_for_tier(host, plan, skip_cap=args.no_prod_cap)
     for n in notes:
         print(f"NOTE: {n}")
     print("\nPlan:", json.dumps(plan, indent=2))

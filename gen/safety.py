@@ -6,7 +6,7 @@ are enforced unconditionally, not behind a flag someone could forget.
 from .core import parse_duration_token
 
 PROD_HOST = "api.twilio.com"
-PROD_MAX_PER_CATEGORY = 5
+PROD_MAX_PER_CATEGORY = 30
 PROD_MAX_CALL_DURATION_SECONDS = 30
 
 def is_prod(host):
@@ -16,6 +16,8 @@ def confirm_prod(account_info):
     name = account_info.get("friendly_name", "<unknown>")
     print(f"\n*** This account is PRODUCTION ({name}) ***")
     print("Real calls, real numbers, real cost, real visibility.")
+    print(f"Limit: {PROD_MAX_PER_CATEGORY} per category (calls, recordings/transcriptions, conferences) "
+          f"and {PROD_MAX_CALL_DURATION_SECONDS}s per call, unless --no-prod-cap was passed.")
     ans = input("Type PROD in capitals to continue, anything else cancels: ")
     return ans.strip() == "PROD"
 
@@ -42,13 +44,17 @@ def _cap_spec(spec, max_n, parse_token=int):
         return spec, False
     return str(max_n), True
 
-def cap_plan_for_tier(host, plan):
+def cap_plan_for_tier(host, plan, skip_cap=False):
     """Hard-caps any category's spec on prod, so it can never resolve above
     the limit, now or on any future re-roll of the same saved config. Never
     silently drops a category, just clamps the spec and reports what
-    changed."""
+    changed. skip_cap (--no-prod-cap) lifts both the count and the
+    call_duration caps; the PROD confirmation still applies."""
     if not is_prod(host):
         return plan, []
+    if skip_cap:
+        return plan, [f"prod caps ({PROD_MAX_PER_CATEGORY} per category, "
+                      f"{PROD_MAX_CALL_DURATION_SECONDS}s per call) skipped (--no-prod-cap)"]
     capped = dict(plan)
     notes = []
     for key in ("calls", "recordings_transcriptions", "conferences"):

@@ -22,12 +22,18 @@ not for someone running it.
   environment variable *names* (see `wizard.py`'s `render_standalone`).
   If you're tempted to "just hardcode it for testing," write it to an env
   var and source that instead.
-- **Prod guardrails live in `gen/safety.py` and must be unconditional.**
-  `is_prod()` / `confirm_prod()` / `cap_plan_for_tier()` should never be
-  bypassable by a flag, a config value, or an agent deciding the check
-  is unnecessary this one time. If you add a new entry point (e.g. a
-  future non-interactive/cron mode), route it through `safety.py` too,
-  don't reimplement the check inline.
+- **Prod guardrails live in `gen/safety.py`.** `is_prod()` /
+  `confirm_prod()` must be unconditional, never bypassable by a flag, a
+  config value, or an agent deciding the check is unnecessary this one
+  time. The one deliberate exception is the caps in `cap_plan_for_tier()`
+  (`PROD_MAX_PER_CATEGORY`, 30, and `PROD_MAX_CALL_DURATION_SECONDS`,
+  30): the user chose to make them skippable via the explicit
+  `--no-prod-cap` flag. That flag only lifts the caps, it never skips
+  the `PROD` confirmation / `--confirm-prod`,
+  and it must never be defaulted on or implied by another flag. Don't add
+  any other bypass. If you add a new entry point (e.g. a future
+  non-interactive/cron mode), route it through `safety.py` too, don't
+  reimplement the check inline.
 - **Real external numbers only ever get dialed from `real_call_burst.py` /
   `gen/real_number.py`, never from `wizard.py` or `gen/core.py`.** That
   separation is the whole safety model for real numbers: it's opt-in by
@@ -53,7 +59,7 @@ not for someone running it.
 ## Why the design looks the way it does
 
 - **`gen/safety.py`'s prod cap clamps the spec itself, not a resolved
-  value.** `_cap_spec()` rewrites e.g. `"10-60"` down to `"5-5"` (or
+  value.** `_cap_spec()` rewrites e.g. `"10-60"` down to `"10-30"` (or
   `"1-30"` for `call_duration`), it doesn't just cap whatever number this
   one run happened to roll. This is a direct consequence of specs being
   resolved at execution time: `gen/core.py` has no dependency on
@@ -61,7 +67,8 @@ not for someone running it.
   only touched a resolved value, a saved standalone script targeting prod
   would re-roll inside the *original, uncapped* range on every future
   run, silently defeating the cap. If you touch `_cap_spec`, keep it
-  operating on the spec string, not a rolled number.
+  operating on the spec string, not a rolled number. With
+  `--no-prod-cap`, the uncapped spec is what gets saved, deliberately.
 - **Environment is stated by the user, never guessed.** This used to
   auto-detect by trying all three hosts and using whichever authenticated
   (`detect_environment`). Deliberately changed: the caller now says which
