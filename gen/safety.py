@@ -7,7 +7,7 @@ from .core import parse_duration_token
 
 PROD_HOST = "api.twilio.com"
 PROD_MAX_PER_CATEGORY = 30
-PROD_MAX_CALL_DURATION_SECONDS = 30
+PROD_MAX_CALL_DURATION_SECONDS = 5 * 60
 
 def is_prod(host):
     return host == PROD_HOST

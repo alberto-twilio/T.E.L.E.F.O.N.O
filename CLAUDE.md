@@ -27,7 +27,7 @@ not for someone running it.
   config value, or an agent deciding the check is unnecessary this one
   time. The one deliberate exception is the caps in `cap_plan_for_tier()`
   (`PROD_MAX_PER_CATEGORY`, 30, and `PROD_MAX_CALL_DURATION_SECONDS`,
-  30): the user chose to make them skippable via the explicit
+  5m): the user chose to make them skippable via the explicit
   `--no-prod-cap` flag. That flag only lifts the caps, it never skips
   the `PROD` confirmation / `--confirm-prod`,
   and it must never be defaulted on or implied by another flag. Don't add
@@ -60,7 +60,7 @@ not for someone running it.
 
 - **`gen/safety.py`'s prod cap clamps the spec itself, not a resolved
   value.** `_cap_spec()` rewrites e.g. `"10-60"` down to `"10-30"` (or
-  `"1-30"` for `call_duration`), it doesn't just cap whatever number this
+  `"1-300"` for a `call_duration` of `1s-10m`), it doesn't just cap whatever number this
   one run happened to roll. This is a direct consequence of specs being
   resolved at execution time: `gen/core.py` has no dependency on
   `gen/safety.py` (a standalone script never imports it), so if the cap
