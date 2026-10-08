@@ -244,7 +244,7 @@ def build_plan(args, unattended):
     return plan
 
 
-def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode):
+def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode, no_prod_cap=False):
     categories = [c for c in ALL_CATEGORIES if plan.get(c, "0") not in (None, "0", 0)]
     parts = [
         "python3 wizard.py",
@@ -264,7 +264,7 @@ def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path,
         parts.append(f"--out {out_path}")
     if tier == "prod":
         parts.append("--confirm-prod")
-        if args.no_prod_cap:
+        if no_prod_cap:
             parts.append("--no-prod-cap")
     if purchased_any:
         parts.append("--allow-purchase  # only needed again if numbers drop below 2")
@@ -370,7 +370,8 @@ def main():
         print(f"It reads credentials from env vars {sid_env} / {token_env} (not embedded).")
 
     if not unattended:
-        print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode)
+        print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode,
+                            no_prod_cap=args.no_prod_cap)
 
 
 if __name__ == "__main__":
