@@ -31,6 +31,7 @@ Requires: Python 3, stdlib only. No pip install needed.
 import os
 import sys
 import json
+import pprint
 import getpass
 import argparse
 import datetime
@@ -285,7 +286,8 @@ def render_standalone(config, out_path):
         f"# Generated {datetime.datetime.now():%Y-%m-%d %H:%M} by wizard.py\n"
         "# Stdlib only. Credentials read from env vars named below, never embedded.\n\n"
     )
-    config_block = "CONFIG = " + json.dumps(config, indent=2) + "\n\n"
+    # pformat, not json.dumps: JSON true/false/null are not valid Python literals.
+    config_block = "CONFIG = " + pprint.pformat(config, indent=2, sort_dicts=False) + "\n\n"
     with open(out_path, "w") as f:
         f.write(header)
         f.write(config_block)
