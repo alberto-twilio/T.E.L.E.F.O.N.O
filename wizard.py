@@ -120,6 +120,9 @@ def build_arg_parser():
     p.add_argument("--regions", default="", help="Comma list of conference regions, e.g. us1,au1,ie1")
     p.add_argument("--mode", choices=["run", "save", "both"], default="run")
     p.add_argument("--out", help="Output path for standalone script (save/both mode)")
+    p.add_argument("--results-path", dest="results_path",
+                    help="Where to write the results JSON. Default: voice_batch_<tier>_<date>.json in the "
+                         "current directory, which a second run on the same day overwrites.")
     p.add_argument("--confirm-prod", action="store_true",
                     help="Required if the detected account is production. No interactive prompt exists in unattended mode.")
     p.add_argument("--no-prod-cap", dest="no_prod_cap", action="store_true",
@@ -354,7 +357,7 @@ def main():
         "token_env": token_env,
         "numbers": numbers,
         "plan": plan,
-        "results_path": f"voice_batch_{tier}_{datetime.date.today():%Y%m%d}.json",
+        "results_path": args.results_path or f"voice_batch_{tier}_{datetime.date.today():%Y%m%d}.json",
         "poll_after": True,
     }
 

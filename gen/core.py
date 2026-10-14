@@ -155,6 +155,7 @@ def create_call(ctx, from_num, to_num, twiml):
 
 def run_calls(ctx, n_spec, weights=(0.55, 0.25, 0.20), duration_spec=None):
     n = parse_count_spec(n_spec)
+    print(f"[plan] calls={n}", flush=True)  # parsed by desktop/lib/progress.js, keep the format
     numbers = ctx["numbers"]
     pairs = make_pairs(numbers)
     call_types = random.choices(["completed", "failed", "canceled"], weights=list(weights), k=n)
@@ -199,6 +200,7 @@ def run_calls(ctx, n_spec, weights=(0.55, 0.25, 0.20), duration_spec=None):
 
 def run_recordings_transcriptions(ctx, n_spec):
     n = parse_count_spec(n_spec)
+    print(f"[plan] rec_trans={n}", flush=True)  # parsed by desktop/lib/progress.js, keep the format
     numbers = ctx["numbers"]
     pairs = make_pairs(numbers)
     out = []
@@ -221,6 +223,7 @@ def run_recordings_transcriptions(ctx, n_spec):
 
 def run_conferences(ctx, n_spec, regions=None):
     n = parse_count_spec(n_spec)
+    print(f"[plan] conf={n}", flush=True)  # parsed by desktop/lib/progress.js, keep the format
     numbers = ctx["numbers"]
     tag = datetime.date.today().strftime("%Y%m%d")
     out = []
