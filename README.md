@@ -115,6 +115,56 @@ Two things are never bypassed by a flag alone:
   path is to run once interactively to provision numbers, then schedule
   the unattended command (which won't need it again).
 
+## Desktop app (`desktop/`)
+
+An Electron front-end for the repeat-it-every-day case. The terminal tools above
+keep working exactly as before; the app is an addition, not a replacement.
+
+```bash
+cd desktop
+npm install
+npm start            # run from source
+npm run dist         # builds "dist/mac-arm64/Voice Test Data Gen.app" (unsigned)
+npm test             # arg-building, validation and runner tests (no network)
+```
+
+- **Profiles** store an environment, credentials and a plan (categories,
+  count/duration *specs*, conference regions). Create one once, then hit
+  **Run** on it, from the sidebar or the profile page. Duplicate/Edit to vary it.
+- **Credentials live in the macOS Keychain**, one item per profile (service
+  `voice-test-data-gen`). They are never written to a file, never put on a
+  command line the app launches, and the child process gets them as env vars
+  only. Editing a profile with the credential fields blank keeps what's stored.
+- **Specs stay specs.** `10-30` is stored as-is and re-rolled by `gen/core.py`
+  on every run, so four runs a day give four different outcomes.
+- **Every run is `wizard.py` in unattended mode.** The app builds the same
+  `--sid-env/--token-env/--tier/--calls/...` command documented above, so the
+  prod caps, number discovery and generation logic are the single existing
+  implementation. The app adds one flag, `--results-path`, so each run's
+  results JSON lands in its own file instead of overwriting the day's file.
+- **Progress**: a running profile shows a percentage (sidebar, history row,
+  and a bar on the run's log page). Each call, recording/transcription and
+  conference counts as one item. Counts are rolled when each category starts,
+  so until then the total is estimated from the spec's midpoint and shown as
+  `≈`; it becomes exact once all categories have rolled. It holds at 99% while
+  the wizard does its final status polling, and reads 100% only when the run ends.
+- **Run history** (status, duration, counts, full log) is kept per profile, and
+  click a row to re-read its log. Runs can overlap (several profiles, or
+  the same one twice); a spinner in the sidebar and on the profile page shows
+  how many are in flight, and **Stop** kills just that run. A run still marked
+  running when the app starts is relabeled `interrupted`.
+- **Prod**: every run on a prod profile opens a dialog where you type `PROD`;
+  that is what passes `--confirm-prod`, and it is asked every time, never
+  remembered. A profile's "lift the prod caps" checkbox maps to `--no-prod-cap`
+  and does not skip the dialog.
+- **Purchasing numbers is not available in the app.** If an account has fewer
+  than 2 voice numbers the run fails with wizard.py's `BLOCKED` message; run
+  `python3 wizard.py` once interactively to provision them.
+- Needs `python3` (found via a login shell, then Homebrew/system paths). Data
+  is stored in `~/Library/Application Support/voice-test-data-gen-desktop/`.
+  The packaged app bundles a *copy* of `wizard.py` and `gen/`, so rebuild after
+  changing Python code.
+
 ## Real-number call burst (`real_call_burst.py`)
 
 Everything above only ever touches numbers the account owns. Some
@@ -178,6 +228,7 @@ gen/
   core.py             all generation logic + reporting (stdlib only, portable)
   discovery.py        environment confirmation (given, not guessed), number listing/purchase, compliance check
   safety.py           prod guardrails (30 per category / 5m per call caps, confirmations)
+desktop/              Electron app: profiles, one-click runs, history (shells out to wizard.py)
 ```
 
 `gen/core.py` is the single source of truth. The wizard imports it

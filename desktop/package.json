@@ -1,0 +1,26 @@
+{
+  "name": "voice-test-data-gen-desktop",
+  "version": "0.1.0",
+  "description": "Desktop front-end for voice-test-data-gen: save run profiles and repeat them with one click.",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "electron-builder --mac dir"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.twilio.voice-test-data-gen",
+    "productName": "Voice Test Data Gen",
+    "files": ["main.js", "preload.js", "lib/**", "renderer/**"],
+    "extraResources": [
+      { "from": "../wizard.py", "to": "py/wizard.py" },
+      { "from": "../gen", "to": "py/gen", "filter": ["**/*.py"] }
+    ],
+    "mac": { "category": "public.app-category.developer-tools", "identity": null }
+  }
+}
