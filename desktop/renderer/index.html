@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T.E.L.E.F.O.N.O.</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand" title="Telephony Emulation Logging Event Fabrication Orchestration for Network Operations">
+        <h1>T.E.L.E.F.O.N.O.</h1>
+      </div>
+      <button id="new-profile" class="primary small">New</button>
+    </div>
+    <ul id="profile-list"></ul>
+    <div class="sidebar-foot"><button id="run-all" class="wide">Run all</button></div>
+    <div id="env-note" class="muted small"></div>
+  </aside>
+  <main id="main"></main>
+  <dialog id="dialog"></dialog>
+  <script src="renderer.js"></script>
+</body>
+</html>

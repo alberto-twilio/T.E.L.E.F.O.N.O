@@ -4,3 +4,6 @@ voice_batch_*.json
 voice_batch_*.py
 *.env
 .env
+desktop/node_modules/
+desktop/dist/
+.DS_Store

@@ -55,6 +55,25 @@ not for someone running it.
   number into a saved standalone script forever instead of re-rolling
   fresh every time that script runs. If you need to show a human what a
   plan will do before running it, print the spec, not a preview roll.
+- **`desktop/` is a front-end over `wizard.py`, never a second generator.**
+  The app is named TELEFONO (Telephony Emulation Logging Event Fabrication
+  Orchestration for Network Operations). The name is cosmetic: the Keychain
+  service and the userData folder keep the old `voice-test-data-gen` names on
+  purpose, renaming them would orphan saved credentials and history.
+  It builds wizard.py's *unattended* command (`desktop/lib/args.js`) and
+  spawns it; it must not import or reimplement anything from `gen/`.
+  Credentials go in the macOS Keychain (`lib/keychain.js`) and reach the child
+  only as env vars named by `--sid-env/--token-env`, never in argv, a profile
+  file, or a run log. `--confirm-prod` is passed only when the user typed
+  `PROD` in the run dialog for *that run*; never store it on a profile, never
+  infer it from `noProdCap`. **Run all** is one dialog that names every profile and,
+  if any is prod, needs `PROD` typed once for that click; never skip or default it. `--allow-purchase` is deliberately not exposed.
+  Profiles hold specs, not rolled numbers (same rule as `plan`).
+  Run progress is read from wizard.py's stdout (`desktop/lib/progress.js`):
+  the `[plan] calls=N` lines and `[call i/n]`-style item lines printed by
+  `gen/core.py`. Don't change those formats without updating that parser and
+  its tests. Every item weighs the same; categories roll their count only
+  when they start, so the total is an estimate until each has announced it.
 
 ## Why the design looks the way it does
 
@@ -194,6 +213,9 @@ validate a change:
 python3 -m py_compile gen/core.py gen/discovery.py gen/safety.py gen/real_number.py wizard.py real_call_burst.py
 ```
 
+For the desktop app: `cd desktop && npm test` (no network; the runner tests use
+a fake python). Never validate UI changes by running a profile against prod.
+
 For anything touching pairing/region logic, exercise the pure functions
 directly with fake number dicts (no network needed), see the session
 history for the exact snippets used when this was first built. For
@@ -202,6 +224,12 @@ anything touching the actual API calls, run `wizard.py` against a known
 never validate a change against prod.
 
 ## Things to never do here
+
+- Don't delete Keychain items by service name (`security delete-generic-password
+  -s voice-test-data-gen` with no `-a`). That service holds the user's real
+  profile credentials, not test leftovers. When testing the desktop app, use a
+  throwaway `--user-data-dir` and delete only the exact account (`-a <id>`) you
+  created.
 
 - Don't add a `requirements.txt` dependency to `gen/core.py` or anything
   it imports.
