@@ -176,6 +176,7 @@ const profileView = (p) => {
       h('div', { class: 'row' },
         runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
+        h('button', { disabled: !p.credentialsStored || !canRun(), title: p.credentialsStored ? 'Read whether this is a parent or a subaccount' : 'No credentials', onClick: (e) => checkAccount(p, e.currentTarget) }, 'Check account'),
         h('button', { onClick: () => confirmDuplicate(p) }, 'Duplicate'),
         h('button', { class: 'danger', onClick: () => confirmDelete(p) }, 'Delete'))),
     p.videoEnabled && h('div', { class: 'hint mt-14' }, hasVoice(p)
@@ -398,6 +399,25 @@ const showDialog = (content) => {
   return d;
 };
 const closeDialog = () => $('#dialog').close();
+
+const checkAccount = async (p, btn) => {
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  try {
+    const { profile, status } = await api.describeProfile(p.id);
+    await reload();
+    const label = { main: 'Parent account', sub: 'Subaccount' }[profile.accountKind] || 'Account type unknown';
+    showDialog([h('h2', {}, 'Account checked'),
+      h('p', {}, `${label}${profile.accountName ? `: ${profile.accountName}` : ''}${status ? ` (${status})` : ''}.`),
+      h('div', { class: 'actions' }, h('button', { class: 'primary', onClick: closeDialog }, 'OK'))]);
+  } catch (e) {
+    const msg = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    btn.disabled = false;
+    btn.textContent = 'Check account';
+    showDialog([h('h2', {}, 'Could not check the account'), h('p', {}, msg),
+      h('div', { class: 'actions' }, h('button', { class: 'primary', onClick: closeDialog }, 'OK'))]);
+  }
+};
 
 const duplicate = async (p, copyCredentials) => {
   closeDialog();

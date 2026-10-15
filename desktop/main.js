@@ -97,6 +97,17 @@ const main = async () => {
     return creds ? creds.sid : null;
   });
 
+  // Re-reads parent/subaccount for an existing profile with its stored credentials (read-only lookup via wizard.py).
+  ipcMain.handle('profiles:describe', async (_e, id) => {
+    const profile = store.getProfile(id);
+    if (!profile) throw new Error('Profile not found.');
+    const creds = await keychain.getCredentials(id);
+    if (!creds) throw new Error('No credentials stored for this profile. Edit it and re-enter them.');
+    const info = await describeAccount({ pythonPath, wizardPath, tier: profile.tier, creds });
+    const saved = store.saveProfile({ id, accountKind: info.kind, accountName: info.friendlyName });
+    return { profile: saved, status: info.status };
+  });
+
   ipcMain.handle('profiles:delete', async (_e, id) => {
     store.deleteProfile(id);
     await keychain.deleteCredentials(id);
