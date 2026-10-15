@@ -1,4 +1,7 @@
-# voice-test-data-gen
+# T.E.L.E.F.O.N.O.
+
+*Telephony Emulation Logging Event Fabrication Orchestration for Network Operations.* (Formerly `voice-test-data-gen`; the repo was renamed. Some
+internal identifiers keep the old name on purpose, see the desktop app notes below.)
 
 Generates realistic Twilio Voice test data (calls, recordings, transcriptions,
 conferences) against any account or subaccount, in any environment
@@ -169,7 +172,8 @@ npm test             # arg-building, validation and runner tests (no network)
   than 2 voice numbers the run fails with wizard.py's `BLOCKED` message; run
   `python3 wizard.py` once interactively to provision them.
 - Needs `python3` (found via a login shell, then Homebrew/system paths). Data
-  is stored in `~/Library/Application Support/voice-test-data-gen-desktop/`.
+  is stored in `~/Library/Application Support/voice-test-data-gen-desktop/`
+  (the old name is kept so existing profiles and history survive the rename).
   The packaged app bundles a *copy* of `wizard.py` and `gen/`, so rebuild after
   changing Python code.
 
