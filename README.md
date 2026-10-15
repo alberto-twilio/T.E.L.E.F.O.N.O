@@ -117,14 +117,16 @@ Two things are never bypassed by a flag alone:
 
 ## Desktop app (`desktop/`)
 
-An Electron front-end for the repeat-it-every-day case. The terminal tools above
+**TELEFONO** (*Telephony Emulation Logging Event Fabrication Orchestration for
+Network Operations*, T.E.L.E.F.O.N.O.) is an Electron front-end for the
+repeat-it-every-day case. The terminal tools above
 keep working exactly as before; the app is an addition, not a replacement.
 
 ```bash
 cd desktop
 npm install
 npm start            # run from source
-npm run dist         # builds "dist/mac-arm64/Voice Test Data Gen.app" (unsigned)
+npm run dist         # builds "dist/mac-arm64/TELEFONO.app" (unsigned)
 npm test             # arg-building, validation and runner tests (no network)
 ```
 

@@ -25,6 +25,8 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: v
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 #sidebar { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.brand { display: flex; flex-direction: column; line-height: 1.2; }
+.brand h1 { margin: 0; letter-spacing: .08em; }
 .sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 10px; }
 #profile-list { list-style: none; margin: 0; padding: 0 8px; overflow: auto; flex: 1; }
 #profile-list li {

@@ -56,6 +56,10 @@ not for someone running it.
   fresh every time that script runs. If you need to show a human what a
   plan will do before running it, print the spec, not a preview roll.
 - **`desktop/` is a front-end over `wizard.py`, never a second generator.**
+  The app is named TELEFONO (Telephony Emulation Logging Event Fabrication
+  Orchestration for Network Operations). The name is cosmetic: the Keychain
+  service and the userData folder keep the old `voice-test-data-gen` names on
+  purpose, renaming them would orphan saved credentials and history.
   It builds wizard.py's *unattended* command (`desktop/lib/args.js`) and
   spawns it; it must not import or reimplement anything from `gen/`.
   Credentials go in the macOS Keychain (`lib/keychain.js`) and reach the child

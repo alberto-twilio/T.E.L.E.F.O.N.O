@@ -36,6 +36,12 @@ const PROFILE_FIELDS = [
 ];
 const pickProfile = (p) => Object.fromEntries(PROFILE_FIELDS.filter((k) => k in p).map((k) => [k, p[k]]));
 
+// The userData folder (profiles, run history) predates the TELEFONO name; pin it so a
+// rename never hides existing data. Tests still override it with --user-data-dir.
+if (!app.commandLine.hasSwitch('user-data-dir')) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'voice-test-data-gen-desktop'));
+}
+
 const main = async () => {
   await app.whenReady();
   const store = createStore(app.getPath('userData'));
@@ -110,7 +116,7 @@ const main = async () => {
     height: 760,
     minWidth: 820,
     minHeight: 560,
-    title: 'Voice Test Data Gen',
+    title: 'T.E.L.E.F.O.N.O.',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
