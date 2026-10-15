@@ -31,15 +31,21 @@ const fmtDuration = (run) => {
   const s = Math.round((new Date(run.finishedAt) - new Date(run.startedAt)) / 1000);
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 };
-const tierBadge = (tier) => h('span', { class: `badge ${tier}` }, tier);
-const specSummary = (p) => {
-  const parts = [];
-  if (p.categories.includes('calls')) parts.push(`calls ${p.calls}`);
-  if (p.categories.includes('recordings_transcriptions')) parts.push(`rec ${p.recordingsTranscriptions}`);
-  if (p.categories.includes('conferences')) parts.push(`conf ${p.conferences}`);
-  return parts.join(' · ');
+// what a profile generates: Voice (any category on), Video, or both
+const hasVoice = (p) => p.categories.length > 0;
+const kindPills = (p) => h('div', { class: 'pills' },
+  tierBadge(p.tier),
+  kindBadge(p),
+  hasVoice(p) && h('span', { class: 'pill voice', title: 'Generates Voice data' }, 'Voice'),
+  p.videoEnabled && h('span', { class: 'pill video', title: 'Video is stored on the profile; runs do not generate it yet' }, 'Video'));
+// Video has no run path yet, so a Video-only profile has nothing to run
+const runnableNow = (p) => p.credentialsStored && hasVoice(p);
+// environment and account type use the same pill as Voice/Video
+const tierBadge = (tier) => h('span', { class: `pill tier ${tier}`, title: `${tier} environment` }, tier);
+const kindBadge = (p) => {
+  const label = { main: 'Parent', sub: 'Subaccount' }[p.accountKind];
+  return label ? h('span', { class: `pill kind ${p.accountKind}`, title: p.accountName ? `${label} account: ${p.accountName}` : `${label} account` }, label) : null;
 };
-
 const CHECKED_KEY = 'checkedProfiles';
 const loadChecked = () => {
   try { return new Set(JSON.parse(localStorage.getItem(CHECKED_KEY)) || []); } catch (e) { return new Set(); }
@@ -48,7 +54,8 @@ const saveChecked = () => {
   try { localStorage.setItem(CHECKED_KEY, JSON.stringify([...state.checked])); } catch (e) { /* convenience only */ }
 };
 // profiles the bulk button acts on: the ticked ones, or every runnable one if none are ticked
-const runnableProfiles = () => state.profiles.filter((p) => p.credentialsStored);
+const runTitle = (p) => (!p.credentialsStored ? 'Re-enter credentials first' : !hasVoice(p) ? 'Video runs are not available yet' : 'Run this profile');
+const runnableProfiles = () => state.profiles.filter((p) => runnableNow(p) && !busy(p));
 const bulkTargets = () => {
   const ticked = runnableProfiles().filter((p) => state.checked.has(p.id));
   return ticked.length ? ticked : runnableProfiles();
@@ -59,7 +66,7 @@ const runningRuns = (profileId) => state.runs.filter((r) => r.status === 'runnin
 const spinner = (title) => h('span', { class: 'spinner', role: 'status', 'aria-label': title || 'Running', title: title || 'Running' });
 // Progress bar + label for one run. Painted in place from `paintProgress`, so a
 // log line arriving never re-renders a whole view.
-const progressLabel = (p) => (p ? `${p.estimated ? '≈' : ''}${p.percent}%` : '');
+const progressLabel = (p) => (p ? `${p.percent}%` : '');
 const progressEl = (runId, { detail = false } = {}) =>
   h('span', { class: 'progress', 'data-progress': runId, 'data-detail': detail ? '1' : '' },
     h('span', { class: 'bar' }, h('i')), h('span', { class: 'pct' }));
@@ -70,16 +77,22 @@ const paintProgress = (runId) => {
     const detail = el.dataset.detail && p ? `  ${p.done}/${p.total}${p.estimated ? ' (estimated total)' : ''}` : '';
     el.querySelector('.pct').textContent = progressLabel(p) + detail;
   }
+  for (const btn of document.querySelectorAll(`[data-run-btn="${runId}"]`)) btn.textContent = progressLabel(p) || '0%';
 };
 const canRun = () => Boolean(state.info && state.info.pythonPath);
 
 // ------------------------------------------------------------ sidebar ----
 
-const sidebarSpinner = (p) => {
-  const n = runningRuns(p.id).length;
-  if (n === 0) return null;
-  const single = n === 1 ? progressLabel(state.progress[runningRuns(p.id)[0].id]) : null;
-  return h('span', { class: 'running-tag' }, spinner(`${n} running`), n > 1 ? String(n) : single);
+// A profile with a run in flight shows its progress inside the (disabled) Run button, at a fixed width.
+const busy = (p) => runningRuns(p.id).length > 0;
+const runButton = (p, { label, small, onClick }) => {
+  const run = runningRuns(p.id)[0];
+  const size = small ? 'small' : 'big';
+  if (run) {
+    return h('button', { class: `primary run-btn running ${size}`, disabled: true, 'data-run-btn': run.id, title: 'Run in progress' },
+      progressLabel(state.progress[run.id]) || '0%');
+  }
+  return h('button', { class: `primary run-btn ${size}`, disabled: !canRun() || !runnableNow(p), title: runTitle(p), onClick }, label);
 };
 
 const renderSidebar = () => {
@@ -88,8 +101,8 @@ const renderSidebar = () => {
     ...state.profiles.map((p) =>
       h('li', { class: p.id === state.selectedProfileId ? 'selected' : '', onClick: () => selectProfile(p.id) },
         h('input', {
-          type: 'checkbox', class: 'pick', 'aria-label': `Select ${p.name}`, title: p.credentialsStored ? 'Include in Run selected' : 'No credentials',
-          checked: p.credentialsStored && state.checked.has(p.id), disabled: !p.credentialsStored,
+          type: 'checkbox', class: 'pick', 'aria-label': `Select ${p.name}`, title: runnableNow(p) ? 'Include in Run selected' : p.credentialsStored ? 'Video runs are not available yet' : 'No credentials',
+          checked: runnableNow(p) && state.checked.has(p.id), disabled: !runnableNow(p),
           onClick: (e) => e.stopPropagation(),
           onChange: (e) => {
             if (e.target.checked) state.checked.add(p.id); else state.checked.delete(p.id);
@@ -99,15 +112,9 @@ const renderSidebar = () => {
         }),
         h('div', { class: 'info' },
           h('div', { class: 'name' }, p.name),
-          h('div', { class: 'muted small' }, specSummary(p))),
-        sidebarSpinner(p),
+          kindPills(p)),
         p.credentialsStored ? null : h('span', { class: 'badge warn', title: 'Credentials missing from the Keychain' }, 'no creds'),
-        tierBadge(p.tier),
-        h('button', {
-          class: 'primary small', title: p.credentialsStored ? 'Run this profile' : 'Re-enter credentials first',
-          disabled: !canRun() || !p.credentialsStored,
-          onClick: (e) => { e.stopPropagation(); requestRun(p); },
-        }, 'Run'))));
+        runButton(p, { label: 'Run', small: true, onClick: (e) => { e.stopPropagation(); requestRun(p); } }))));
   const runnable = runnableProfiles();
   const ticked = runnable.filter((p) => state.checked.has(p.id));
   const all = $('#run-all');
@@ -159,17 +166,21 @@ const profileView = (p) => {
     ['Recordings / transcriptions', p.categories.includes('recordings_transcriptions') ? p.recordingsTranscriptions : 'off'],
     ['Conferences', p.categories.includes('conferences')
       ? `${p.conferences}${p.regions && p.regions.length ? `  (${p.regions.join(', ')})` : ''}` : 'off'],
+    ['Video', p.videoEnabled ? `${p.videoParticipants} participants · ${p.videoRooms} rooms · hold ${p.videoHold}s · prefix ${p.videoPrefix}` : 'off'],
   ];
   if (p.tier === 'prod') stats.push(['Prod caps', p.noProdCap ? 'lifted (--no-prod-cap)' : '30 per category, 5m per call']);
 
   return h('div', {},
     h('div', { class: 'row spread' },
-      h('div', { class: 'row' }, h('h2', {}, p.name), tierBadge(p.tier), runningRuns(p.id).length > 0 && h('span', { class: 'running-tag' }, spinner(), `${runningRuns(p.id).length} running`)),
+      h('div', { class: 'row' }, h('h2', {}, p.name), tierBadge(p.tier), kindBadge(p), runningRuns(p.id).length > 0 && h('span', { class: 'running-tag' }, spinner(), `${runningRuns(p.id).length} running`)),
       h('div', { class: 'row' },
-        h('button', { class: 'primary', disabled: !canRun() || !p.credentialsStored, onClick: () => requestRun(p) }, 'Run now'),
+        runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
         h('button', { onClick: () => confirmDuplicate(p) }, 'Duplicate'),
         h('button', { class: 'danger', onClick: () => confirmDelete(p) }, 'Delete'))),
+    p.videoEnabled && h('div', { class: 'hint mt-14' }, hasVoice(p)
+      ? 'Video is saved on this profile but runs do not generate it yet; running it generates Voice only.'
+      : 'This profile only has Video enabled, and Video runs are not available yet.'),
     p.credentialsStored ? null : h('div', { class: 'callout mt-14' },
       'The Account SID and Auth Token for this profile are not in the Keychain, so it cannot run. ',
       h('a', { href: '#', onClick: (e) => { e.preventDefault(); startEdit(p); } }, 'Edit the profile and enter them again.')),
@@ -232,7 +243,9 @@ const editView = (existing) => {
   const p = existing || {
     name: '', tier: 'stage', categories: [...state.info.CATEGORIES], calls: D.calls, callDuration: D.callDuration,
     recordingsTranscriptions: D.recordingsTranscriptions, conferences: D.conferences, regions: [], noProdCap: false,
+    videoEnabled: false,
   };
+  const V = (k) => (p[k] != null ? p[k] : D[k]);
   const field = (label, input, hint) => h('div', {}, h('label', {}, label), input, hint && h('div', { class: 'hint' }, hint));
   const text = (id, value, type = 'text') => h('input', { type, id, value: value ?? '', autocomplete: 'off', spellcheck: 'false' });
 
@@ -240,6 +253,22 @@ const editView = (existing) => {
   const checks = (name, all, chosen, labels = {}) =>
     h('div', { class: 'row' }, all.map((v) =>
       h('label', { class: 'check' }, h('input', { type: 'checkbox', name, value: v, checked: chosen.includes(v) }), labels[v] || v)));
+
+  // The Account SID is fixed once a profile has stored credentials: another account means another profile.
+  const sidLocked = Boolean(existing && p.credentialsStored);
+  const sidInput = text('f-sid', sidLocked ? (sidCache[p.id] || `AC…${p.sidHint}`) : '');
+  if (sidLocked) {
+    sidInput.disabled = true; // greyed out: the SID is fixed once a profile has credentials
+    sidInput.classList.add('mono');
+    if (!sidCache[p.id]) api.getProfileSid(p.id).then((sid) => { if (sid) { sidCache[p.id] = sid; sidInput.value = sid; } });
+  }
+  const sidField = field('Account SID', sidInput, sidLocked
+    ? 'Fixed for this profile. To use another account, create a new profile. Enter a new Auth Token below to replace the token.'
+    : existing && p.sidHint ? `Re-enter the SID this profile was created with (ending ${p.sidHint}).` : 'AC followed by 32 hex characters. It cannot be changed afterwards.');
+
+  // The stored token is never read back into the UI; asterisks are a placeholder, so empty still means "keep".
+  const tokenInput = text('f-token', '', 'password');
+  if (sidLocked) tokenInput.setAttribute('placeholder', '*'.repeat(32));
 
   const errorBox = h('ul', { class: 'errors', id: 'form-errors' });
   const noCap = h('div', { id: 'nocap-wrap' },
@@ -251,6 +280,63 @@ const editView = (existing) => {
   tier.addEventListener('change', syncNoCap);
   queueMicrotask(syncNoCap);
 
+  // Voice and Video are independent sections; each has an on/off checkbox, and fields that don't apply are disabled.
+  const voiceOn = h('input', { type: 'checkbox', id: 'f-voice-on', checked: p.categories.length > 0 });
+  const catBoxes = checks('categories', state.info.CATEGORIES, p.categories.length ? p.categories : state.info.CATEGORIES,
+    { recordings_transcriptions: 'recordings/transcriptions' });
+  const voiceInputs = {
+    calls: [text('f-calls', p.calls), text('f-duration', p.callDuration)],
+    recordings_transcriptions: [text('f-rec', p.recordingsTranscriptions)],
+    conferences: [text('f-conf', p.conferences)],
+  };
+  const regionBoxes = checks('regions', state.info.REGIONS, p.regions || []);
+  const catChecked = (c) => Boolean(catBoxes.querySelector(`input[value=${c}]`).checked);
+  const syncVoice = () => {
+    const on = voiceOn.checked;
+    for (const box of catBoxes.querySelectorAll('input')) box.disabled = !on;
+    for (const [cat, inputs] of Object.entries(voiceInputs)) for (const i of inputs) i.disabled = !(on && catChecked(cat));
+    for (const box of regionBoxes.querySelectorAll('input')) box.disabled = !(on && catChecked('conferences'));
+  };
+  voiceOn.addEventListener('change', syncVoice);
+  catBoxes.addEventListener('change', syncVoice);
+  queueMicrotask(syncVoice);
+  const voiceSection = h('div', { class: 'section' },
+    h('h3', {}, 'Voice'),
+    h('label', { class: 'check' }, voiceOn, 'Generate Voice data (calls, recordings, conferences)'),
+    h('div', { class: 'mt-12' }, catBoxes),
+    h('div', { class: 'grid mt-12' },
+      field('Calls', voiceInputs.calls[0], 'Number, min-max range, or 0.'),
+      field('Call duration', voiceInputs.calls[1], 'Range like 1s-3m. Applies to completed calls.'),
+      field('Recordings / transcriptions', voiceInputs.recordings_transcriptions[0]),
+      field('Conferences', voiceInputs.conferences[0])),
+    h('div', { class: 'mt-12' }, h('label', {}, 'Conference regions (optional)'), regionBoxes));
+
+  const videoOn = h('input', { type: 'checkbox', id: 'f-video-on', checked: Boolean(p.videoEnabled) });
+  const videoFields = [
+    ['f-video-participants', 'Participants', 'videoParticipants', 'Number or min-max range. Each participant yields 2 recordings (video + audio).'],
+    ['f-video-rooms', 'Rooms', 'videoRooms', 'Participants are spread over this many rooms.'],
+    ['f-video-hold', 'Hold time', 'videoHold', 'Seconds each participant stays connected, as a range.'],
+    ['f-video-prefix', 'Room name prefix', 'videoPrefix', 'Rooms are named <prefix>-<stamp>-<n>.'],
+  ].map(([id, label, key, hint]) => ({ id, el: field(label, text(id, V(key)), hint) }));
+  const videoNote = h('div', { class: 'hint', id: 'video-note' });
+  const syncVideo = () => {
+    const prod = tier.value === 'prod';
+    videoOn.disabled = prod;
+    if (prod) videoOn.checked = false;
+    for (const f of videoFields) f.el.querySelector('input').disabled = prod || !videoOn.checked;
+    videoNote.textContent = prod
+      ? 'Video generation is stage/dev only and is never available on prod.'
+      : 'Preview: Video is saved with the profile but runs do not generate it yet.';
+  };
+  tier.addEventListener('change', syncVideo);
+  videoOn.addEventListener('change', syncVideo);
+  queueMicrotask(syncVideo);
+  const videoSection = h('div', { class: 'section' },
+    h('h3', {}, 'Video', h('span', { class: 'badge warn video-soon' }, 'preview')),
+    h('label', { class: 'check' }, videoOn, 'Generate Video rooms + recordings'),
+    videoNote,
+    h('div', { class: 'grid mt-12' }, videoFields.map((f) => f.el)));
+
   const form = h('div', { class: 'card mt-16' },
     h('div', { class: 'grid' },
       field('Name', text('f-name', p.name)),
@@ -258,17 +344,10 @@ const editView = (existing) => {
     noCap,
     h('h3', {}, existing ? 'Credentials (stored in the macOS Keychain)' : 'Credentials (stored in the macOS Keychain)'),
     h('div', { class: 'grid' },
-      field('Account SID', text('f-sid', ''), existing && p.credentialsStored ? `Currently AC…${p.sidHint}. Leave both blank to keep.` : 'AC followed by 32 hex characters.'),
-      field('Auth Token', text('f-token', '', 'password'), existing && p.credentialsStored ? 'Leave blank to keep the stored one.' : undefined)),
-    h('h3', {}, 'Plan'),
-    checks('categories', state.info.CATEGORIES, p.categories, { recordings_transcriptions: 'recordings/transcriptions' }),
-    h('div', { class: 'grid mt-12' },
-      field('Calls', text('f-calls', p.calls), 'Number, min-max range, or 0.'),
-      field('Call duration', text('f-duration', p.callDuration), 'Range like 1s-3m. Applies to completed calls.'),
-      field('Recordings / transcriptions', text('f-rec', p.recordingsTranscriptions)),
-      field('Conferences', text('f-conf', p.conferences))),
-    h('div', { class: 'mt-12' }, h('label', {}, 'Conference regions (optional)'),
-      checks('regions', state.info.REGIONS, p.regions || [])),
+      sidField,
+      field('Auth Token', tokenInput, existing && p.credentialsStored ? 'Leave blank to keep the stored one.' : 'The account type (parent or subaccount) is read from Twilio when you save.')),
+    voiceSection,
+    videoSection,
     errorBox);
 
   const collect = () => {
@@ -277,10 +356,13 @@ const editView = (existing) => {
     return {
       profile: {
         ...(existing ? { id: existing.id } : {}),
-        name: val('#f-name').trim(), tier: tier.value, categories: checked('categories'),
+        name: val('#f-name').trim(), tier: tier.value, categories: voiceOn.checked ? checked('categories') : [],
         calls: val('#f-calls').trim(), callDuration: val('#f-duration').trim(),
         recordingsTranscriptions: val('#f-rec').trim(), conferences: val('#f-conf').trim(),
         regions: checked('regions'), noProdCap: tier.value === 'prod' && $('#f-nocap').checked,
+        videoEnabled: tier.value !== 'prod' && videoOn.checked,
+        videoParticipants: val('#f-video-participants').trim(), videoRooms: val('#f-video-rooms').trim(),
+        videoHold: val('#f-video-hold').trim(), videoPrefix: val('#f-video-prefix').trim(),
       },
       credentials: { sid: val('#f-sid').trim(), token: val('#f-token').trim() },
     };

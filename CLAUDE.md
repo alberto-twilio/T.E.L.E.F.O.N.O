@@ -75,6 +75,10 @@ not for someone running it.
   infer it from `noProdCap`. **Run all** is one dialog that names every profile and,
   if any is prod, needs `PROD` typed once for that click; never skip or default it. `--allow-purchase` is deliberately not exposed.
   Profiles hold specs, not rolled numbers (same rule as `plan`).
+  Account type (parent/subaccount) is read once, when credentials are saved, via
+  `wizard.py --describe-account` (`desktop/lib/describe.js`): one read-only GET,
+  prints a JSON line, exits before any generation or PROD logic. The app never
+  talks to Twilio itself. A profile's Account SID is read-only once stored.
   Run progress is read from wizard.py's stdout (`desktop/lib/progress.js`):
   the `[plan] calls=N` lines and `[call i/n]`-style item lines printed by
   `gen/core.py`. Don't change those formats without updating that parser and

@@ -14,6 +14,11 @@ const DEFAULTS = {
   callDuration: '1s-3m',
   recordingsTranscriptions: '5-10',
   conferences: '5-10',
+  // Video (rooms + recordings). Stored on the profile; not part of a run yet.
+  videoParticipants: '10',
+  videoRooms: '3',
+  videoHold: '5-35',
+  videoPrefix: 'rec-test',
 };
 
 const SID_RE = /^AC[0-9a-f]{32}$/i;
@@ -36,13 +41,29 @@ const validateDuration = (spec) => {
   return null;
 };
 
+const HOLD_RE = /^(\d+)-(\d+)$/;
+const PREFIX_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const validateVideo = (p) => {
+  const errors = [];
+  if (p.tier === 'prod') errors.push('Video is not available on prod.');
+  for (const [label, spec] of [['Video participants', p.videoParticipants], ['Video rooms', p.videoRooms]]) {
+    const err = validateCount(label, spec);
+    if (err) errors.push(err);
+    else if (Number(String(spec).trim().split('-').pop()) < 1) errors.push(`${label}: must be at least 1.`);
+  }
+  const hold = HOLD_RE.exec(String(p.videoHold).trim());
+  if (!hold || Number(hold[1]) < 1 || Number(hold[1]) > Number(hold[2])) errors.push('Video hold time: use a range of seconds like 5-35.');
+  if (!PREFIX_RE.test(String(p.videoPrefix).trim())) errors.push('Video room prefix: letters, digits, - and _ only (max 40).');
+  return errors;
+};
+
 // Returns an array of human-readable problems, empty when the profile is runnable.
 const validateProfile = (p) => {
   const errors = [];
   if (!p.name || !p.name.trim()) errors.push('Name is required.');
   if (!TIERS.includes(p.tier)) errors.push('Pick an environment (prod, stage or dev).');
   const cats = p.categories || [];
-  if (cats.length === 0) errors.push('Select at least one category.');
+  if (cats.length === 0 && !p.videoEnabled) errors.push('Enable Voice (with at least one category) or Video.');
   if (cats.some((c) => !CATEGORIES.includes(c))) errors.push('Unknown category.');
 
   const checks = [
@@ -57,6 +78,7 @@ const validateProfile = (p) => {
     if (err) errors.push(err);
   }
   if ((p.regions || []).some((r) => !REGIONS.includes(r))) errors.push('Unknown conference region.');
+  if (p.videoEnabled) errors.push(...validateVideo(p));
   return errors;
 };
 
@@ -78,6 +100,8 @@ const envNames = (tier) => ({
 const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false }) => {
   const errors = validateProfile(profile);
   if (errors.length) throw new Error(errors.join(' '));
+  // Video is stored on the profile but nothing runs it yet; a profile with no Voice categories has nothing to spawn.
+  if (profile.categories.length === 0) throw new Error('This profile only has Video enabled, and Video runs are not available yet.');
 
   const { sidEnv, tokenEnv } = envNames(profile.tier);
   const args = [

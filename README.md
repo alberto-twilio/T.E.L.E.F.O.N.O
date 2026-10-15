@@ -136,6 +136,12 @@ npm test             # arg-building, validation and runner tests (no network)
 - **Profiles** store an environment, credentials and a plan (categories,
   count/duration *specs*, conference regions). Create one once, then hit
   **Run** on it, from the sidebar or the profile page. Duplicate/Edit to vary it.
+- **Account type:** when you save credentials the app asks `wizard.py
+  --describe-account` (one read-only call, which also verifies the credentials
+  on that environment) and shows a **Parent** or **Subaccount** pill. A
+  profile's Account SID is read-only afterwards; to use another account, create
+  a new profile. Profiles saved before this show no account pill until you
+  save a new Auth Token on them.
 - **Credentials live in the macOS Keychain**, one item per profile (service
   `voice-test-data-gen`). They are never written to a file, never put on a
   command line the app launches, and the child process gets them as env vars
@@ -147,11 +153,11 @@ npm test             # arg-building, validation and runner tests (no network)
   prod caps, number discovery and generation logic are the single existing
   implementation. The app adds one flag, `--results-path`, so each run's
   results JSON lands in its own file instead of overwriting the day's file.
-- **Progress**: a running profile shows a percentage (sidebar, history row,
-  and a bar on the run's log page). Each call, recording/transcription and
+- **Progress**: a running profile shows a percentage (inside its Run button, in the
+  history row, and as a bar on the run's log page). Each call, recording/transcription and
   conference counts as one item. Counts are rolled when each category starts,
-  so until then the total is estimated from the spec's midpoint and shown as
-  `≈`; it becomes exact once all categories have rolled. It holds at 99% while
+  so until then the total is estimated from the spec's midpoint (the run page
+  labels it "estimated total"); it becomes exact once all categories have rolled. It holds at 99% while
   the wizard does its final status polling, and reads 100% only when the run ends.
 - **Run history** (status, duration, counts, full log) is kept per profile, and
   click a row to re-read its log. Runs can overlap (several profiles, or

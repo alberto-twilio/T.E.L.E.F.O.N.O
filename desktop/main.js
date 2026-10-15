@@ -6,6 +6,8 @@ const { execFile } = require('node:child_process');
 const { createStore } = require('./lib/store');
 const keychain = require('./lib/keychain');
 const { createRunner } = require('./lib/runner');
+const { describeAccount } = require('./lib/describe');
+const { resolveCredentialIntent } = require('./lib/credintent');
 const { TIERS, CATEGORIES, REGIONS, DEFAULTS, validateProfile, validateCredentials } = require('./lib/args');
 
 const PYTHON_FALLBACKS = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3'];
@@ -33,6 +35,7 @@ const send = (channel, payload) => {
 const PROFILE_FIELDS = [
   'id', 'name', 'tier', 'categories', 'calls', 'callDuration',
   'recordingsTranscriptions', 'conferences', 'regions', 'noProdCap',
+  'videoEnabled', 'videoParticipants', 'videoRooms', 'videoHold', 'videoPrefix',
 ];
 const pickProfile = (p) => Object.fromEntries(PROFILE_FIELDS.filter((k) => k in p).map((k) => [k, p[k]]));
 
@@ -69,13 +72,22 @@ const main = async () => {
     const existing = clean.id ? store.getProfile(clean.id) : null;
     const hasStored = existing ? Boolean(await keychain.getCredentials(clean.id)) : false;
     // a profile whose stored credentials went missing must get them re-entered, not silently saved without
-    const wantsCreds = !existing || !hasStored || (credentials && (credentials.sid || credentials.token));
-    if (wantsCreds) errors.push(...validateCredentials(credentials || {}));
+    const stored = existing && hasStored ? await keychain.getCredentials(clean.id) : null;
+    const intent = resolveCredentialIntent({ existing, stored, credentials });
+    const { wantsCreds, creds } = intent;
+    errors.push(...intent.errors);
+    if (wantsCreds) errors.push(...validateCredentials(creds));
     if (errors.length) throw new Error(errors.join(' '));
 
-    if (wantsCreds) clean.sidHint = credentials.sid.trim().slice(-4);
+    if (wantsCreds) {
+      clean.sidHint = creds.sid.trim().slice(-4);
+      // main vs subaccount is read once, when the account is added (or its token replaced); also verifies the credentials on that tier
+      const info = await describeAccount({ pythonPath, wizardPath, tier: clean.tier, creds: { sid: creds.sid.trim(), token: creds.token.trim() } });
+      clean.accountKind = info.kind;
+      clean.accountName = info.friendlyName;
+    }
     const saved = store.saveProfile(clean);
-    if (wantsCreds) await keychain.setCredentials(saved.id, { sid: credentials.sid.trim(), token: credentials.token.trim() });
+    if (wantsCreds) await keychain.setCredentials(saved.id, { sid: creds.sid.trim(), token: creds.token.trim() });
     return saved;
   });
 
@@ -96,8 +108,8 @@ const main = async () => {
     if (!src) throw new Error('Profile not found.');
     const creds = copyCredentials ? await keychain.getCredentials(id) : null;
     if (copyCredentials && !creds) throw new Error('This profile has no stored credentials to copy.');
-    const { id: _id, createdAt, updatedAt, sidHint, ...rest } = src;
-    const copy = store.saveProfile({ ...rest, name: `${src.name} (copy)`, ...(creds ? { sidHint } : {}) });
+    const { id: _id, createdAt, updatedAt, sidHint, accountKind, accountName, ...rest } = src;
+    const copy = store.saveProfile({ ...rest, name: `${src.name} (copy)`, ...(creds ? { sidHint, accountKind, accountName } : {}) });
     if (creds) await keychain.setCredentials(copy.id, creds);
     return copy;
   });
