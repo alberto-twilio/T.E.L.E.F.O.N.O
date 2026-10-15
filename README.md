@@ -153,6 +153,12 @@ npm test             # arg-building, validation and runner tests (no network)
   the same one twice); a spinner in the sidebar and on the profile page shows
   how many are in flight, and **Stop** kills just that run. A run still marked
   running when the app starts is relabeled `interrupted`.
+- **Run all / Run selected** (bottom of the sidebar): tick profiles with their
+  checkboxes and the button becomes `Run selected (n)`; with nothing ticked it
+  is `Run all`. Either way it starts those profiles that have credentials, in
+  parallel, after one confirmation listing them. Ticks are remembered.
+  If any is prod you type `PROD` once for that click; profiles with no
+  credentials are skipped.
 - **Prod**: every run on a prod profile opens a dialog where you type `PROD`;
   that is what passes `--confirm-prod`, and it is asked every time, never
   remembered. A profile's "lift the prod caps" checkbox maps to `--no-prod-cap`

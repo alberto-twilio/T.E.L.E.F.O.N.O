@@ -112,3 +112,18 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top
 .run-view { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
 pre.log { color-scheme: dark; }
+
+tbody tr:last-child td { border-bottom: none; }
+
+.sid { font-size: 12px; white-space: nowrap; user-select: all; }
+.grid .span-all { grid-column: 1 / -1; }
+
+.sidebar-foot { padding: 12px 14px 14px; border-top: 1px solid var(--line); }
+button.wide { width: 100%; }
+#env-note:empty { display: none; }
+#env-note { border-top: none; padding: 0 14px 12px; }
+.run-all-list { margin: 8px 0; padding-left: 18px; }
+.run-all-list .tag { margin-left: 6px; }
+
+#profile-list .pick { flex: none; margin: 0; cursor: pointer; }
+#profile-list .pick:disabled { cursor: default; }

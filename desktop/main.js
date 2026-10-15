@@ -73,6 +73,12 @@ const main = async () => {
     return saved;
   });
 
+  // Only the SID is returned to the UI, never the token. The full SID lives in the Keychain, not in profiles.json.
+  ipcMain.handle('profiles:sid', async (_e, id) => {
+    const creds = await keychain.getCredentials(id);
+    return creds ? creds.sid : null;
+  });
+
   ipcMain.handle('profiles:delete', async (_e, id) => {
     store.deleteProfile(id);
     await keychain.deleteCredentials(id);

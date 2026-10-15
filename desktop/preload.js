@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   info: invoke('app:info'),
   listProfiles: invoke('profiles:list'),
   saveProfile: invoke('profiles:save'),
+  getProfileSid: invoke('profiles:sid'),
   deleteProfile: invoke('profiles:delete'),
   duplicateProfile: invoke('profiles:duplicate'),
   listRuns: invoke('runs:list'),

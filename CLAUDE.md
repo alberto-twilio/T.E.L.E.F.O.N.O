@@ -62,7 +62,8 @@ not for someone running it.
   only as env vars named by `--sid-env/--token-env`, never in argv, a profile
   file, or a run log. `--confirm-prod` is passed only when the user typed
   `PROD` in the run dialog for *that run*; never store it on a profile, never
-  infer it from `noProdCap`. `--allow-purchase` is deliberately not exposed.
+  infer it from `noProdCap`. **Run all** is one dialog that names every profile and,
+  if any is prod, needs `PROD` typed once for that click; never skip or default it. `--allow-purchase` is deliberately not exposed.
   Profiles hold specs, not rolled numbers (same rule as `plan`).
   Run progress is read from wizard.py's stdout (`desktop/lib/progress.js`):
   the `[plan] calls=N` lines and `[call i/n]`-style item lines printed by
