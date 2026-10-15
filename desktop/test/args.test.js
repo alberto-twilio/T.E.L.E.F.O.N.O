@@ -63,3 +63,29 @@ test('credential validation', () => {
   assert.ok(validateCredentials({ sid: 'nope', token: 't' }).length);
   assert.ok(validateCredentials({ sid: 'AC' + 'a'.repeat(32), token: '' }).length);
 });
+
+test('video-only profile validates but has nothing to run yet', () => {
+  const p = { ...base(), categories: [], videoEnabled: true, ...Object.fromEntries(Object.entries(DEFAULTS).filter(([k]) => k.startsWith('video'))) };
+  assert.deepEqual(validateProfile(p), []);
+  assert.throws(() => buildWizardArgs(p, opts), /only has Video enabled/);
+});
+
+test('a profile needs Voice categories or Video', () => {
+  assert.match(validateProfile({ ...base(), categories: [] }).join(' '), /Enable Voice/);
+});
+
+test('video settings are validated only when enabled, and never on prod', () => {
+  const bad = { ...base(), videoEnabled: true, videoParticipants: '0', videoRooms: 'x', videoHold: '9-3', videoPrefix: 'a b' };
+  const msgs = validateProfile(bad).join(' ');
+  assert.match(msgs, /Video participants/);
+  assert.match(msgs, /Video rooms/);
+  assert.match(msgs, /hold time/);
+  assert.match(msgs, /prefix/);
+  assert.deepEqual(validateProfile({ ...bad, videoEnabled: false }), []);
+  assert.match(validateProfile({ ...base(), tier: 'prod', videoEnabled: true, ...Object.fromEntries(Object.entries(DEFAULTS).filter(([k]) => k.startsWith('video'))) }).join(' '), /not available on prod/);
+});
+
+test('video fields never reach the wizard.py command', () => {
+  const p = { ...base(), videoEnabled: true, ...Object.fromEntries(Object.entries(DEFAULTS).filter(([k]) => k.startsWith('video'))) };
+  assert.ok(!buildWizardArgs(p, opts).some((a) => /video/i.test(a)));
+});

@@ -118,6 +118,9 @@ def build_arg_parser():
     p.add_argument("--recordings-transcriptions", dest="recordings_transcriptions", default="5-10")
     p.add_argument("--conferences", default="5-10")
     p.add_argument("--regions", default="", help="Comma list of conference regions, e.g. us1,au1,ie1")
+    p.add_argument("--describe-account", dest="describe_account", action="store_true",
+                   help="Read-only: confirm the account on --tier, print one JSON line "
+                        "(kind main/sub/unknown, status, friendly_name) and exit. Generates nothing.")
     p.add_argument("--mode", choices=["run", "save", "both"], default="run")
     p.add_argument("--out", help="Output path for standalone script (save/both mode)")
     p.add_argument("--results-path", dest="results_path",
@@ -298,6 +301,20 @@ def render_standalone(config, out_path):
     os.chmod(out_path, 0o700)
 
 
+def describe_account(account_sid, info):
+    """Whether this SID is a main (parent) account or a subaccount. An account
+    resource carries owner_account_sid: equal to its own SID for a main
+    account, the parent's SID for a subaccount. Missing => 'unknown'."""
+    owner = (info.get("owner_account_sid") or "").lower()
+    if not owner:
+        kind = "unknown"
+    elif owner == account_sid.lower():
+        kind = "main"
+    else:
+        kind = "sub"
+    return {"kind": kind, "status": info.get("status"), "friendly_name": info.get("friendly_name")}
+
+
 def main():
     args = build_arg_parser().parse_args()
     account_sid, auth_token, unattended, pre_tier = resolve_credentials(args)
@@ -317,6 +334,10 @@ def main():
     if not host:
         sys.exit(f"Could not authenticate against {tier} ({discovery.HOST_BY_TIER[tier]}). "
                   "Check the credentials, or that this is really the right tier.")
+    if args.describe_account:
+        # read-only lookup for the desktop app; exits before any numbers/prod/generation logic
+        print(json.dumps(describe_account(account_sid, info)))
+        sys.exit(0)
     print(f"Confirmed: {info.get('friendly_name')}  tier={tier}  host={host}")
 
     if safety.is_prod(host):
