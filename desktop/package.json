@@ -1,7 +1,7 @@
 {
   "name": "voice-test-data-gen-desktop",
   "version": "0.1.0",
-  "description": "TELEFONO (Telephony Emulation Logging Event Fabrication Orchestration for Network Operations): desktop front-end for voice-test-data-gen. Save run profiles and repeat them with one click.",
+  "description": "TELEFONO (Telephony Emulation Logging Event Fabrication Orchestration for Network Operations): desktop front-end. Save run profiles and repeat them with one click.",
   "private": true,
   "main": "main.js",
   "scripts": {

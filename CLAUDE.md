@@ -1,4 +1,10 @@
-# voice-test-data-gen
+# T.E.L.E.F.O.N.O. (formerly voice-test-data-gen)
+
+Telephony Emulation Logging Event Fabrication Orchestration for Network Operations.
+The repo and app were renamed; the Keychain service (`voice-test-data-gen`), the
+userData folder (`voice-test-data-gen-desktop`), the npm package name and the
+`appId` keep the old name on purpose, see the desktop notes below. Never "finish
+the rename" on those.
 
 ## What this is
 
