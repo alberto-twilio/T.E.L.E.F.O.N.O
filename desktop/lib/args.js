@@ -7,6 +7,14 @@
 
 const TIERS = ['prod', 'stage', 'dev'];
 const CATEGORIES = ['calls', 'recordings_transcriptions', 'conferences'];
+// Console host per environment. Only these fixed URLs are ever opened (the
+// renderer sends a profile id, never a URL). Stage/dev hosts are assumed to
+// mirror the API hosts (api.stage.twilio.com -> console.stage.twilio.com).
+const CONSOLE_URLS = {
+  prod: 'https://console.twilio.com/',
+  stage: 'https://console.stage.twilio.com/',
+  dev: 'https://console.dev.twilio.com/',
+};
 const REGIONS = ['us1', 'us2', 'au1', 'br1', 'ie1', 'jp1', 'sg1', 'de1', 'in1'];
 
 const DEFAULTS = {
@@ -14,12 +22,11 @@ const DEFAULTS = {
   callDuration: '1s-3m',
   recordingsTranscriptions: '5-10',
   conferences: '5-10',
-  // Video (rooms + recordings). Stored on the profile; not part of a run yet.
-  videoParticipants: '10',
-  videoRooms: '3',
-  videoHold: '5-35',
-  videoPrefix: 'rec-test',
+  // Video rooms (REST only: rooms are created and completed, no participants yet)
+  videoRooms: '5-10',
+  videoPrefix: 'telefono',
 };
+const VIDEO_ROOM_TYPES = ['group', 'group-small', 'peer-to-peer'];
 
 const SID_RE = /^AC[0-9a-f]{32}$/i;
 const COUNT_RE = /^(\d+)(?:-(\d+))?$/;
@@ -41,18 +48,14 @@ const validateDuration = (spec) => {
   return null;
 };
 
-const HOLD_RE = /^(\d+)-(\d+)$/;
 const PREFIX_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const validateVideo = (p) => {
   const errors = [];
   if (p.tier === 'prod') errors.push('Video is not available on prod.');
-  for (const [label, spec] of [['Video participants', p.videoParticipants], ['Video rooms', p.videoRooms]]) {
-    const err = validateCount(label, spec);
-    if (err) errors.push(err);
-    else if (Number(String(spec).trim().split('-').pop()) < 1) errors.push(`${label}: must be at least 1.`);
-  }
-  const hold = HOLD_RE.exec(String(p.videoHold).trim());
-  if (!hold || Number(hold[1]) < 1 || Number(hold[1]) > Number(hold[2])) errors.push('Video hold time: use a range of seconds like 5-35.');
+  const err = validateCount('Video rooms', p.videoRooms);
+  if (err) errors.push(err);
+  else if (Number(String(p.videoRooms).trim().split('-').pop()) < 1) errors.push('Video rooms: must be at least 1.');
+  if ((p.videoRoomTypes || []).some((t) => !VIDEO_ROOM_TYPES.includes(t))) errors.push('Unknown video room type.');
   if (!PREFIX_RE.test(String(p.videoPrefix).trim())) errors.push('Video room prefix: letters, digits, - and _ only (max 40).');
   return errors;
 };
@@ -100,8 +103,6 @@ const envNames = (tier) => ({
 const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false }) => {
   const errors = validateProfile(profile);
   if (errors.length) throw new Error(errors.join(' '));
-  // Video is stored on the profile but nothing runs it yet; a profile with no Voice categories has nothing to spawn.
-  if (profile.categories.length === 0) throw new Error('This profile only has Video enabled, and Video runs are not available yet.');
 
   const { sidEnv, tokenEnv } = envNames(profile.tier);
   const args = [
@@ -109,7 +110,7 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
     '--sid-env', sidEnv,
     '--token-env', tokenEnv,
     '--tier', profile.tier,
-    '--categories', profile.categories.join(','),
+    '--categories', [...profile.categories, ...(profile.videoEnabled ? ['video_rooms'] : [])].join(','),
     '--calls', String(profile.calls).trim(),
     '--call-duration', String(profile.callDuration).trim(),
     '--recordings-transcriptions', String(profile.recordingsTranscriptions).trim(),
@@ -118,6 +119,10 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
     '--results-path', resultsPath,
   ];
   if (profile.regions && profile.regions.length) args.push('--regions', profile.regions.join(','));
+  if (profile.videoEnabled) {
+    args.push('--video-rooms', String(profile.videoRooms).trim(), '--video-room-prefix', String(profile.videoPrefix).trim());
+    if (profile.videoRoomTypes && profile.videoRoomTypes.length) args.push('--video-room-types', profile.videoRoomTypes.join(','));
+  }
 
   if (profile.tier === 'prod') {
     // --confirm-prod only ever comes from a per-run confirmation the caller
@@ -132,6 +137,6 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
 };
 
 module.exports = {
-  TIERS, CATEGORIES, REGIONS, DEFAULTS,
+  TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, VIDEO_ROOM_TYPES, DEFAULTS,
   validateProfile, validateCredentials, envNames, buildWizardArgs,
 };

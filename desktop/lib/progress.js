@@ -1,5 +1,5 @@
 // Tracks run progress by reading wizard.py's stdout. Every item (a call, a
-// recording/transcription, a conference) weighs the same.
+// recording/transcription, a conference, a video room) weighs the same.
 //
 // gen/core.py rolls each category's count only when that category starts, so
 // the total isn't known up front. Until a category has announced its count
@@ -7,14 +7,14 @@
 // reports `estimated: true`.
 //
 // Parsed formats (printed by gen/core.py, keep them in sync):
-//   [plan] calls=N | rec_trans=N | conf=N
-//   [call i/n]  [rec/trans i/n]  [conf i/n]
+//   [plan] calls=N | rec_trans=N | conf=N | video_rooms=N
+//   [call i/n]  [rec/trans i/n]  [conf i/n]  [video_room i/n]
 
 const PROD_MAX_PER_CATEGORY = 30; // mirrors gen/safety.py, estimate only
 
-const CATEGORY_BY_PREFIX = { call: 'calls', 'rec/trans': 'rec_trans', conf: 'conf' };
-const PLAN_RE = /^\[plan\] (calls|rec_trans|conf)=(\d+)/;
-const ITEM_RE = /^\[(call|rec\/trans|conf) (\d+)\/(\d+)\]/;
+const CATEGORY_BY_PREFIX = { call: 'calls', 'rec/trans': 'rec_trans', conf: 'conf', video_room: 'video_rooms' };
+const PLAN_RE = /^\[plan\] (calls|rec_trans|conf|video_rooms)=(\d+)/;
+const ITEM_RE = /^\[(call|rec\/trans|conf|video_room) (\d+)\/(\d+)\]/;
 
 // Expected item count for a count spec ("0", "12", "10-30"): midpoint of a range.
 const expectedFromSpec = (spec, cap = Infinity) => {
@@ -32,12 +32,13 @@ const expectedCounts = (profile) => {
     calls: on('calls') ? expectedFromSpec(profile.calls, cap) : 0,
     rec_trans: on('recordings_transcriptions') ? expectedFromSpec(profile.recordingsTranscriptions, cap) : 0,
     conf: on('conferences') ? expectedFromSpec(profile.conferences, cap) : 0,
+    video_rooms: profile.videoEnabled && profile.tier !== 'prod' ? expectedFromSpec(profile.videoRooms) : 0,
   };
 };
 
 const createProgress = (expected) => {
   const planned = {};
-  const done = { calls: 0, rec_trans: 0, conf: 0 };
+  const done = { calls: 0, rec_trans: 0, conf: 0, video_rooms: 0 };
   let buffer = '';
 
   const feedLine = (line) => {
@@ -71,7 +72,10 @@ const createProgress = (expected) => {
     };
   };
 
-  return { feed, snapshot };
+  // per-category done/total (same estimate rule as snapshot), for live display
+  const breakdown = () => Object.fromEntries(Object.keys(done).map((c) => [c, { done: done[c], total: planned[c] ?? expected[c] ?? 0 }]));
+
+  return { feed, snapshot, breakdown };
 };
 
 // Whole-number percent. Never shows 100 while the run is still going: after the

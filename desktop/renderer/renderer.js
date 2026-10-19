@@ -25,11 +25,24 @@ const h = (tag, props = {}, ...children) => {
   return el;
 };
 
+// 'partial' = the run finished but some items errored; say how many
+const statusLabel = (r) => (r.status === 'partial' && r.summary ? `partial (${r.summary.errors} error${r.summary.errors === 1 ? '' : 's'})` : r.status);
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const fmtSeconds = (s) => (s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`);
 const fmtDuration = (run) => {
   if (!run.finishedAt) return '';
-  const s = Math.round((new Date(run.finishedAt) - new Date(run.startedAt)) / 1000);
-  return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+  return fmtSeconds(Math.round((new Date(run.finishedAt) - new Date(run.startedAt)) / 1000));
+};
+// live elapsed time for a running run, repainted every second by the ticker below
+const elapsedEl = (run) => h('span', { class: 'mono', 'data-elapsed': run.startedAt }, fmtSeconds(Math.max(0, Math.round((Date.now() - new Date(run.startedAt)) / 1000))));
+setInterval(() => {
+  for (const el of document.querySelectorAll('[data-elapsed]')) el.textContent = fmtSeconds(Math.max(0, Math.round((Date.now() - new Date(el.dataset.elapsed)) / 1000)));
+}, 1000);
+// one count cell: live done/total while the run is going, the final number after
+const countCell = (r, cat, finalValue) => {
+  if (r.status !== 'running') return h('td', {}, r.summary ? String(finalValue) : '–');
+  const c = state.progress[r.id] && state.progress[r.id].cats && state.progress[r.id].cats[cat];
+  return h('td', { 'data-count': r.id, 'data-cat': cat }, c && c.total ? `${c.done}/${c.total}` : '–');
 };
 // what a profile generates: Voice (any category on), Video, or both
 const hasVoice = (p) => p.categories.length > 0;
@@ -37,9 +50,8 @@ const kindPills = (p) => h('div', { class: 'pills' },
   tierBadge(p.tier),
   kindBadge(p),
   hasVoice(p) && h('span', { class: 'pill voice', title: 'Generates Voice data' }, 'Voice'),
-  p.videoEnabled && h('span', { class: 'pill video', title: 'Video is stored on the profile; runs do not generate it yet' }, 'Video'));
-// Video has no run path yet, so a Video-only profile has nothing to run
-const runnableNow = (p) => p.credentialsStored && hasVoice(p);
+  p.videoEnabled && h('span', { class: 'pill video', title: 'Generates Video rooms' }, 'Video'));
+const runnableNow = (p) => p.credentialsStored;
 // environment and account type use the same pill as Voice/Video
 const tierBadge = (tier) => h('span', { class: `pill tier ${tier}`, title: `${tier} environment` }, tier);
 const kindBadge = (p) => {
@@ -54,7 +66,7 @@ const saveChecked = () => {
   try { localStorage.setItem(CHECKED_KEY, JSON.stringify([...state.checked])); } catch (e) { /* convenience only */ }
 };
 // profiles the bulk button acts on: the ticked ones, or every runnable one if none are ticked
-const runTitle = (p) => (!p.credentialsStored ? 'Re-enter credentials first' : !hasVoice(p) ? 'Video runs are not available yet' : 'Run this profile');
+const runTitle = (p) => (!p.credentialsStored ? 'Re-enter credentials first' : 'Run this profile');
 const runnableProfiles = () => state.profiles.filter((p) => runnableNow(p) && !busy(p));
 const bulkTargets = () => {
   const ticked = runnableProfiles().filter((p) => state.checked.has(p.id));
@@ -76,6 +88,10 @@ const paintProgress = (runId) => {
     el.querySelector('i').style.width = `${p ? p.percent : 0}%`;
     const detail = el.dataset.detail && p ? `  ${p.done}/${p.total}${p.estimated ? ' (estimated total)' : ''}` : '';
     el.querySelector('.pct').textContent = progressLabel(p) + detail;
+  }
+  for (const el of document.querySelectorAll(`[data-count="${runId}"]`)) {
+    const c = p && p.cats && p.cats[el.dataset.cat];
+    el.textContent = c && c.total ? `${c.done}/${c.total}` : '–';
   }
   for (const btn of document.querySelectorAll(`[data-run-btn="${runId}"]`)) btn.textContent = progressLabel(p) || '0%';
 };
@@ -101,7 +117,7 @@ const renderSidebar = () => {
     ...state.profiles.map((p) =>
       h('li', { class: p.id === state.selectedProfileId ? 'selected' : '', onClick: () => selectProfile(p.id) },
         h('input', {
-          type: 'checkbox', class: 'pick', 'aria-label': `Select ${p.name}`, title: runnableNow(p) ? 'Include in Run selected' : p.credentialsStored ? 'Video runs are not available yet' : 'No credentials',
+          type: 'checkbox', class: 'pick', 'aria-label': `Select ${p.name}`, title: runnableNow(p) ? 'Include in Run selected' : 'No credentials',
           checked: runnableNow(p) && state.checked.has(p.id), disabled: !runnableNow(p),
           onClick: (e) => e.stopPropagation(),
           onChange: (e) => {
@@ -166,7 +182,8 @@ const profileView = (p) => {
     ['Recordings / transcriptions', p.categories.includes('recordings_transcriptions') ? p.recordingsTranscriptions : 'off'],
     ['Conferences', p.categories.includes('conferences')
       ? `${p.conferences}${p.regions && p.regions.length ? `  (${p.regions.join(', ')})` : ''}` : 'off'],
-    ['Video', p.videoEnabled ? `${p.videoParticipants} participants · ${p.videoRooms} rooms · hold ${p.videoHold}s · prefix ${p.videoPrefix}` : 'off'],
+    ['Video rooms', p.videoEnabled
+      ? `${p.videoRooms}  (${p.videoRoomTypes && p.videoRoomTypes.length ? p.videoRoomTypes.join(', ') : 'group only'}; prefix ${p.videoPrefix})` : 'off'],
   ];
   if (p.tier === 'prod') stats.push(['Prod caps', p.noProdCap ? 'lifted (--no-prod-cap)' : '30 per category, 5m per call']);
 
@@ -177,11 +194,9 @@ const profileView = (p) => {
         runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
         h('button', { disabled: !p.credentialsStored || !canRun(), title: p.credentialsStored ? 'Read whether this is a parent or a subaccount' : 'No credentials', onClick: (e) => checkAccount(p, e.currentTarget) }, 'Check account'),
+        h('button', { title: `Open the ${p.tier} Twilio console in your browser (log in as this account)`, onClick: () => api.openConsole(p.id) }, 'Open in Console'),
         h('button', { onClick: () => confirmDuplicate(p) }, 'Duplicate'),
         h('button', { class: 'danger', onClick: () => confirmDelete(p) }, 'Delete'))),
-    p.videoEnabled && h('div', { class: 'hint mt-14' }, hasVoice(p)
-      ? 'Video is saved on this profile but runs do not generate it yet; running it generates Voice only.'
-      : 'This profile only has Video enabled, and Video runs are not available yet.'),
     p.credentialsStored ? null : h('div', { class: 'callout mt-14' },
       'The Account SID and Auth Token for this profile are not in the Keychain, so it cannot run. ',
       h('a', { href: '#', onClick: (e) => { e.preventDefault(); startEdit(p); } }, 'Edit the profile and enter them again.')),
@@ -195,16 +210,17 @@ const profileView = (p) => {
 const runsTable = (runs) =>
   h('div', { class: 'card tight' },
     h('table', {},
-      h('thead', {}, h('tr', {}, ['Started', 'Status', 'Duration', 'Calls', 'Rec.', 'Conf.', 'Errors'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Started', 'Status', 'Duration', 'Calls', 'Rec.', 'Conf.', 'Rooms', 'Errors'].map((t) => h('th', {}, t)))),
       h('tbody', {}, runs.map((r) => {
         const s = r.summary;
         return h('tr', { onClick: () => openRun(r.id) },
           h('td', {}, fmtTime(r.startedAt)),
-          h('td', { class: `status-${r.status}` }, r.status === 'running' ? h('span', { class: 'row gap-6' }, spinner(), progressEl(r.id)) : r.status),
-          h('td', {}, fmtDuration(r)),
-          h('td', {}, s ? String(s.calls) : '–'),
-          h('td', {}, s ? String(s.recordings) : '–'),
-          h('td', {}, s ? String(s.conferences) : '–'),
+          h('td', { class: `status-${r.status}` }, r.status === 'running' ? h('span', { class: 'row gap-6' }, spinner(), progressEl(r.id)) : statusLabel(r)),
+          h('td', {}, r.status === 'running' ? elapsedEl(r) : fmtDuration(r)),
+          countCell(r, 'calls', s && s.calls),
+          countCell(r, 'rec_trans', s && s.recordings),
+          countCell(r, 'conf', s && s.conferences),
+          countCell(r, 'video_rooms', s && (s.videoRooms || 0)),
           h('td', {}, s ? String(s.errors) : '–'));
       }))));
 
@@ -218,14 +234,14 @@ const runView = () => {
       h('div', { class: 'row' },
         h('h2', {}, run ? run.profileName : 'Run'),
         run && tierBadge(run.tier),
-        run && h('span', { class: `status-${run.status}` }, live ? h('span', { class: 'row gap-6' }, spinner(), 'running') : run.status)),
+        run && h('span', { class: `status-${run.status}` }, live ? h('span', { class: 'row gap-6' }, spinner(), 'running') : statusLabel(run))),
       
       h('div', { class: 'row' },
         live && h('button', { class: 'danger', onClick: () => api.stopRun(run.id) }, 'Stop'),
         h('button', { onClick: () => { state.view = selected() ? 'profile' : 'empty'; renderMain(); } }, 'Back'))),
     live && h('div', { class: 'progress-block' }, progressEl(run.id, { detail: true })),
     run && h('p', { class: 'muted small' },
-      `Started ${fmtTime(run.startedAt)}${run.finishedAt ? ` · took ${fmtDuration(run)}` : ''}`),
+      `Started ${fmtTime(run.startedAt)}`, run.finishedAt ? ` · took ${fmtDuration(run)}` : live ? [' · elapsed ', elapsedEl(run)] : ''),
     log);
 };
 
@@ -313,30 +329,31 @@ const editView = (existing) => {
     h('div', { class: 'mt-12' }, h('label', {}, 'Conference regions (optional)'), regionBoxes));
 
   const videoOn = h('input', { type: 'checkbox', id: 'f-video-on', checked: Boolean(p.videoEnabled) });
-  const videoFields = [
-    ['f-video-participants', 'Participants', 'videoParticipants', 'Number or min-max range. Each participant yields 2 recordings (video + audio).'],
-    ['f-video-rooms', 'Rooms', 'videoRooms', 'Participants are spread over this many rooms.'],
-    ['f-video-hold', 'Hold time', 'videoHold', 'Seconds each participant stays connected, as a range.'],
-    ['f-video-prefix', 'Room name prefix', 'videoPrefix', 'Rooms are named <prefix>-<stamp>-<n>.'],
-  ].map(([id, label, key, hint]) => ({ id, el: field(label, text(id, V(key)), hint) }));
+  const videoRoomsInput = text('f-video-rooms', V('videoRooms'));
+  const videoPrefixInput = text('f-video-prefix', V('videoPrefix'));
+  const videoTypeBoxes = checks('videoRoomTypes', state.info.VIDEO_ROOM_TYPES, p.videoRoomTypes || []);
+  const videoInputs = [videoRoomsInput, videoPrefixInput];
   const videoNote = h('div', { class: 'hint', id: 'video-note' });
   const syncVideo = () => {
     const prod = tier.value === 'prod';
     videoOn.disabled = prod;
     if (prod) videoOn.checked = false;
-    for (const f of videoFields) f.el.querySelector('input').disabled = prod || !videoOn.checked;
+    for (const i of [...videoInputs, ...videoTypeBoxes.querySelectorAll('input')]) i.disabled = prod || !videoOn.checked;
     videoNote.textContent = prod
       ? 'Video generation is stage/dev only and is never available on prod.'
-      : 'Preview: Video is saved with the profile but runs do not generate it yet.';
+      : 'Creates and completes empty Video rooms through the REST API (no participants or recordings yet). Stage/dev only.';
   };
   tier.addEventListener('change', syncVideo);
   videoOn.addEventListener('change', syncVideo);
   queueMicrotask(syncVideo);
   const videoSection = h('div', { class: 'section' },
-    h('h3', {}, 'Video', h('span', { class: 'badge warn video-soon' }, 'preview')),
-    h('label', { class: 'check' }, videoOn, 'Generate Video rooms + recordings'),
+    h('h3', {}, 'Video'),
+    h('label', { class: 'check' }, videoOn, 'Generate Video rooms'),
     videoNote,
-    h('div', { class: 'grid mt-12' }, videoFields.map((f) => f.el)));
+    h('div', { class: 'grid mt-12' },
+      field('Rooms', videoRoomsInput, 'Number or min-max range, re-rolled every run.'),
+      field('Room name prefix', videoPrefixInput, 'Rooms are named <prefix>-<stamp>-<n>.')),
+    h('div', { class: 'mt-12' }, h('label', {}, 'Room types (none ticked = group only; legacy types only work on accounts that used Video before Oct 21 2024)'), videoTypeBoxes));
 
   const form = h('div', { class: 'card mt-16' },
     h('div', { class: 'grid' },
@@ -362,8 +379,8 @@ const editView = (existing) => {
         recordingsTranscriptions: val('#f-rec').trim(), conferences: val('#f-conf').trim(),
         regions: checked('regions'), noProdCap: tier.value === 'prod' && $('#f-nocap').checked,
         videoEnabled: tier.value !== 'prod' && videoOn.checked,
-        videoParticipants: val('#f-video-participants').trim(), videoRooms: val('#f-video-rooms').trim(),
-        videoHold: val('#f-video-hold').trim(), videoPrefix: val('#f-video-prefix').trim(),
+        videoRooms: val('#f-video-rooms').trim(), videoRoomTypes: checked('videoRoomTypes'),
+        videoPrefix: val('#f-video-prefix').trim(),
       },
       credentials: { sid: val('#f-sid').trim(), token: val('#f-token').trim() },
     };

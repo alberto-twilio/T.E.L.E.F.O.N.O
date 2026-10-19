@@ -55,14 +55,14 @@ test('successful run: logs streamed, env passed, summary recorded, history persi
   const { store, profile, runner, events } = setup(t);
   await runner.start(profile.id);
   const run = await finished(events);
-  assert.equal(run.status, 'success');
-  assert.deepEqual(run.summary, { calls: 2, recordings: 0, conferences: 1, errors: 1 });
+  assert.equal(run.status, 'partial'); // exit 0 but 1 item errored
+  assert.deepEqual(run.summary, { calls: 2, recordings: 0, conferences: 1, videoRooms: 0, errors: 1 });
   const log = store.readLog(run.id);
   assert.match(log, /sid-visible: ACtest/);
   assert.ok(!log.includes('secret-token'));
   assert.match(log, /--tier stage/);
   assert.ok(!log.includes('--confirm-prod'));
-  assert.equal(store.listRuns()[0].status, 'success');
+  assert.equal(store.listRuns()[0].status, 'partial');
   assert.deepEqual(runner.activeRunIds(), []);
 });
 
@@ -96,12 +96,12 @@ test('runs can overlap, each with its own log and results', async (t) => {
   assert.notEqual(a.id, b.id);
   assert.equal(runner.activeRunIds().length, 2);
   await new Promise((resolve) => {
-    const tick = () => (events.filter(([c, p]) => c === 'run:update' && p.status === 'success').length >= 2 ? resolve() : setTimeout(tick, 20));
+    const tick = () => (events.filter(([c, p]) => c === 'run:update' && p.status !== 'running').length >= 2 ? resolve() : setTimeout(tick, 20));
     tick();
   });
   const runs = store.listRuns();
   assert.equal(runs.length, 2);
-  assert.ok(runs.every((r) => r.status === 'success' && r.summary.calls === 2));
+  assert.ok(runs.every((r) => r.status === 'partial' && r.summary.calls === 2));
   assert.notEqual(store.paths(a.id).results, store.paths(b.id).results);
   assert.deepEqual(runner.activeRunIds(), []);
 });
@@ -120,7 +120,7 @@ test('stop kills only the targeted run', async (t) => {
   });
   const byId = Object.fromEntries(store.listRuns().map((r) => [r.id, r.status]));
   assert.equal(byId[a.id], 'stopped');
-  assert.equal(byId[b.id], 'success');
+  assert.equal(byId[b.id], 'partial'); // fake results contain one errored item
 });
 
 test('a double-click on the same profile starts one run, not two', async (t) => {
@@ -134,4 +134,13 @@ test('prod needs confirmation', async (t) => {
   const { store, profile, runner } = setup(t);
   const prod = store.saveProfile({ ...profile, name: 'prod', tier: 'prod', id: undefined });
   await assert.rejects(runner.start(prod.id), /confirmation/);
+});
+
+test('resolveStatus: partial only when some items failed and some worked', () => {
+  const { resolveStatus } = require('../lib/runner');
+  const s = (errors, videoRooms) => ({ calls: 0, recordings: 0, conferences: 0, videoRooms, errors });
+  assert.equal(resolveStatus('success', s(0, 10)), 'success');
+  assert.equal(resolveStatus('success', s(3, 10)), 'partial');
+  assert.equal(resolveStatus('success', s(10, 10)), 'failed');
+  assert.equal(resolveStatus('stopped', s(10, 10)), 'stopped');
 });

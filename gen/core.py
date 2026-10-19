@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Core Voice test-data generation logic: calls, recordings+transcriptions,
-and conferences (with optional region), against a Twilio account's own
-numbers. Never dials a real external number.
+Core test-data generation logic: Voice calls, recordings+transcriptions and
+conferences (with optional region), against a Twilio account's own numbers
+(never dials a real external number), plus Video rooms (REST only, no
+participants).
 
 Stdlib only, on purpose: this file is designed to be read verbatim and
 concatenated into a standalone, shareable script (see wizard.py's
@@ -30,6 +31,24 @@ def build_auth_header(account_sid, auth_token):
 
 def request(host, account_sid, auth_header, method, path, data=None):
     url = f"https://{host}/2010-04-01/Accounts/{account_sid}{path}"
+    body = urllib.parse.urlencode(data).encode() if data else None
+    req = urllib.request.Request(url, data=body, method=method)
+    req.add_header("Authorization", auth_header)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"error": True, "status": e.code, "body": e.read().decode()[:400]}
+    except Exception as e:
+        return {"error": True, "status": None, "body": str(e)}
+
+def video_host_for(api_host):
+    """Same tier, Video API host: api.stage.twilio.com -> video.stage.twilio.com."""
+    return "video." + api_host[len("api."):] if api_host.startswith("api.") else api_host
+
+def video_request(host, auth_header, method, path, data=None):
+    """Video API (https://<video host>/v1/...). Same Basic auth as the rest."""
+    url = f"https://{host}/v1{path}"
     body = urllib.parse.urlencode(data).encode() if data else None
     req = urllib.request.Request(url, data=body, method=method)
     req.add_header("Authorization", auth_header)
@@ -263,10 +282,62 @@ def run_conferences(ctx, n_spec, regions=None):
         print(f"[conf {i+1}/{n}] room={room} region={region} conf_sid={conf_sid} ended={ended}", flush=True)
     return out
 
+VIDEO_ROOM_TYPES = ["group", "group-small", "peer-to-peer"]
+# Accounts that started using Video after 2024-10-21 can only create Group
+# rooms (errors 53126/53127 otherwise), so that is the default. The legacy
+# types stay selectable for older accounts.
+DEFAULT_VIDEO_ROOM_TYPES = ["group"]
+
+def pick_room_type(i, types):
+    """Cycles the requested room types, like region_for does for regions."""
+    types = types or DEFAULT_VIDEO_ROOM_TYPES
+    return types[i % len(types)]
+
+def room_params(name, rtype):
+    """Group rooms send AudioOnly=false explicitly: on stage the account default
+    is audio-only, which is rejected (53127) unless overridden. Legacy types
+    are sent as-is (only older accounts accept them)."""
+    if rtype == "group":
+        return {"UniqueName": name, "AudioOnly": "false"}
+    return {"UniqueName": name, "Type": rtype}
+
+def video_room_name(prefix, stamp, i):
+    return f"{prefix}-{stamp}-{i + 1}"
+
+def run_video_rooms(ctx, n_spec, types=None, prefix="telefono"):
+    """Creates Video rooms and ends each one explicitly (Status=completed),
+    same reasoning as conferences: never rely on the idle timeout to close
+    them. Rooms with no participants have ~0 duration and no recordings;
+    that needs a participant joining, which this REST-only path does not do."""
+    n = parse_count_spec(n_spec)
+    print(f"[plan] video_rooms={n}", flush=True)  # parsed by desktop/lib/progress.js, keep the format
+    stamp = format(int(time.time()), "x")
+    out = []
+    for i in range(n):
+        rtype = pick_room_type(i, types)
+        name = video_room_name(prefix, stamp, i)
+        r = video_request(ctx["video_host"], ctx["auth_header"], "POST", "/Rooms",
+                          room_params(name, rtype))
+        sid = r.get("sid")
+        error = r.get("body") if r.get("error") else None
+        completed = False
+        if sid:
+            end = video_request(ctx["video_host"], ctx["auth_header"], "POST", f"/Rooms/{sid}",
+                                {"Status": "completed"})
+            completed = not end.get("error", False)
+            if end.get("error"):
+                error = end.get("body")
+        out.append({"index": i, "room_name": name, "type": rtype, "room_sid": sid,
+                    "completed": completed, "error": error})
+        print(f"[video_room {i+1}/{n}] name={name} type={rtype} sid={sid} completed={completed} err={error}", flush=True)
+        time.sleep(0.5)
+    return out
+
 def run_batch(ctx, plan):
     """plan holds SPECS, not pre-rolled numbers, e.g.
     {"calls": "10-60", "recordings_transcriptions": "0", "conferences": "5",
-     "conference_regions": [str,...] or None, "call_duration": "1s-3m" or None}.
+     "conference_regions": [str,...] or None, "call_duration": "1s-3m" or None,
+     "video_rooms": "5-10", "video_room_types": [str,...] or None, "video_room_prefix": "telefono"}.
     Every spec is resolved fresh inside the corresponding run_* function,
     at actual execution time. Run this function twice and you get two
     independent random outcomes, that's deliberate: it's what makes a
@@ -286,6 +357,11 @@ def run_batch(ctx, plan):
         results["conferences"] = run_conferences(ctx, plan["conferences"], plan.get("conference_regions"))
     else:
         results["conferences"] = []
+    if spec_enabled(plan.get("video_rooms")):
+        results["video_rooms"] = run_video_rooms(ctx, plan["video_rooms"], plan.get("video_room_types"),
+                                                 plan.get("video_room_prefix") or "telefono")
+    else:
+        results["video_rooms"] = []
     return results
 
 # ------------------------------------------------------------- reporting --
@@ -329,7 +405,17 @@ def poll_results(ctx, results):
         r = request(ctx["host"], ctx["account_sid"], ctx["auth_header"], "GET", f"/Conferences/{sid}.json")
         conf_status[r.get("status", "unknown")] += 1
 
+    room_status = Counter()
+    for rm in results.get("video_rooms", []):
+        sid = rm.get("room_sid")
+        if not sid:
+            room_status["not_created"] += 1
+            continue
+        r = video_request(ctx["video_host"], ctx["auth_header"], "GET", f"/Rooms/{sid}")
+        room_status[r.get("status", "unknown")] += 1
+
     return {
+        "video_rooms": dict(room_status),
         "calls": dict(call_status),
         "recordings": dict(rec_status),
         "transcriptions": dict(trans_status),
@@ -350,6 +436,8 @@ def print_report(tally, planned, results):
     print(f"Recordings:     {tally['recordings']}")
     print(f"Transcriptions: {tally['transcriptions']}")
     print(f"Conferences:    {tally['conferences']}  (spec {planned.get('conferences', 0)}, rolled {len(results['conferences'])})")
+    if planned.get("video_rooms") not in (None, "0", 0, ""):
+        print(f"Video rooms:    {tally.get('video_rooms', {})}  (spec {planned['video_rooms']}, rolled {len(results.get('video_rooms', []))})")
 
 # --------------------------------------------------------- standalone run --
 
@@ -363,6 +451,7 @@ def run(config):
         "account_sid": account_sid,
         "auth_header": build_auth_header(account_sid, auth_token),
         "numbers": config["numbers"],
+        "video_host": video_host_for(config["host"]),
     }
     results_path = config.get("results_path", "voice_batch_results.json")
     results = run_batch(ctx, config["plan"])

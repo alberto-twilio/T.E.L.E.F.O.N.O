@@ -176,6 +176,19 @@ not for someone running it.
   this same mutate-in-place-then-resave pattern rather than inventing a
   parallel results structure.
 
+## Video rooms
+
+- `video_rooms` lives in the same wizard/core path (`run_video_rooms` in
+  `gen/core.py`), is opt-in, REST-only (create then complete, zero
+  participants) and **blocked on prod** via `safety.video_allowed()`; there is
+  no override flag. Don't add one.
+- The Video host is derived from the API host (`video_host_for`), not guessed.
+- Numbers are only fetched/purchased when a Voice category runs.
+- Progress-format coupling: `[plan] video_rooms=N` and `[video_room i/n]` are
+  parsed by `desktop/lib/progress.js`; change both together.
+- Participants/recordings (Playwright) are a later phase, don't bolt them
+  onto this path.
+
 ## Defaults
 
 Default count ranges (interactive prompt defaults, `--calls`/

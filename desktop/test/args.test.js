@@ -64,10 +64,16 @@ test('credential validation', () => {
   assert.ok(validateCredentials({ sid: 'AC' + 'a'.repeat(32), token: '' }).length);
 });
 
-test('video-only profile validates but has nothing to run yet', () => {
-  const p = { ...base(), categories: [], videoEnabled: true, ...Object.fromEntries(Object.entries(DEFAULTS).filter(([k]) => k.startsWith('video'))) };
+const videoFields = () => Object.fromEntries(Object.entries(DEFAULTS).filter(([k]) => k.startsWith('video')));
+
+test('video-only profile builds a wizard command with only video_rooms', () => {
+  const p = { ...base(), categories: [], videoEnabled: true, ...videoFields(), videoRoomTypes: ['group', 'peer-to-peer'] };
   assert.deepEqual(validateProfile(p), []);
-  assert.throws(() => buildWizardArgs(p, opts), /only has Video enabled/);
+  const args = buildWizardArgs(p, opts);
+  assert.equal(args[args.indexOf('--categories') + 1], 'video_rooms');
+  assert.equal(args[args.indexOf('--video-rooms') + 1], '5-10');
+  assert.equal(args[args.indexOf('--video-room-prefix') + 1], 'telefono');
+  assert.equal(args[args.indexOf('--video-room-types') + 1], 'group,peer-to-peer');
 });
 
 test('a profile needs Voice categories or Video', () => {
@@ -75,17 +81,18 @@ test('a profile needs Voice categories or Video', () => {
 });
 
 test('video settings are validated only when enabled, and never on prod', () => {
-  const bad = { ...base(), videoEnabled: true, videoParticipants: '0', videoRooms: 'x', videoHold: '9-3', videoPrefix: 'a b' };
+  const bad = { ...base(), videoEnabled: true, videoRooms: 'x', videoRoomTypes: ['nope'], videoPrefix: 'a b' };
   const msgs = validateProfile(bad).join(' ');
-  assert.match(msgs, /Video participants/);
   assert.match(msgs, /Video rooms/);
-  assert.match(msgs, /hold time/);
+  assert.match(msgs, /room type/);
   assert.match(msgs, /prefix/);
   assert.deepEqual(validateProfile({ ...bad, videoEnabled: false }), []);
-  assert.match(validateProfile({ ...base(), tier: 'prod', videoEnabled: true, ...Object.fromEntries(Object.entries(DEFAULTS).filter(([k]) => k.startsWith('video'))) }).join(' '), /not available on prod/);
+  assert.match(validateProfile({ ...base(), tier: 'prod', videoEnabled: true, ...videoFields() }).join(' '), /not available on prod/);
 });
 
-test('video fields never reach the wizard.py command', () => {
-  const p = { ...base(), videoEnabled: true, ...Object.fromEntries(Object.entries(DEFAULTS).filter(([k]) => k.startsWith('video'))) };
-  assert.ok(!buildWizardArgs(p, opts).some((a) => /video/i.test(a)));
+test('video flags are omitted when video is off; room types omitted when none picked', () => {
+  assert.ok(!buildWizardArgs(base(), opts).some((a) => /video/i.test(a)));
+  const args = buildWizardArgs({ ...base(), videoEnabled: true, ...videoFields(), videoRoomTypes: [] }, opts);
+  assert.ok(!args.includes('--video-room-types'));
+  assert.match(args[args.indexOf('--categories') + 1], /conferences,video_rooms$/);
 });
