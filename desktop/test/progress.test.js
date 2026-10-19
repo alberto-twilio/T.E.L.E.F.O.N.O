@@ -8,8 +8,8 @@ const profile = (over = {}) => ({
 });
 
 test('expected counts use range midpoints, 0 for disabled categories, prod cap only when not lifted', () => {
-  assert.deepEqual(expectedCounts(profile()), { calls: 20, rec_trans: 8, conf: 8 });
-  assert.deepEqual(expectedCounts(profile({ categories: ['conferences'] })), { calls: 0, rec_trans: 0, conf: 8 });
+  assert.deepEqual(expectedCounts(profile()), { calls: 20, rec_trans: 8, conf: 8, video_rooms: 0 });
+  assert.deepEqual(expectedCounts(profile({ categories: ['conferences'] })), { calls: 0, rec_trans: 0, conf: 8, video_rooms: 0 });
   assert.equal(expectedCounts(profile({ tier: 'prod', calls: '50-60' })).calls, 30);
   assert.equal(expectedCounts(profile({ tier: 'prod', calls: '50-60', noProdCap: true })).calls, 55);
   assert.equal(expectedFromSpec('12'), 12);
@@ -54,4 +54,22 @@ test('percent never hits 100 while running, and is 100 once finished', () => {
   assert.equal(percent({ done: 20, total: 20 }), 99);
   assert.equal(percent({ done: 25, total: 20 }), 99); // roll came in lower than the estimate
   assert.equal(percent({ done: 20, total: 20 }, true), 100);
+});
+
+test('video rooms count as items and feed the estimate', () => {
+  const p = profile({ categories: [], videoEnabled: true, videoRooms: '5-10' });
+  assert.equal(expectedCounts(p).video_rooms, 8);
+  assert.equal(expectedCounts({ ...p, tier: 'prod' }).video_rooms, 0);
+  const t = createProgress(expectedCounts(p));
+  assert.deepEqual(t.snapshot(), { done: 0, total: 8, estimated: true });
+  t.feed('[plan] video_rooms=6\n[video_room 1/6] name=a type=group sid=RM1 completed=True err=\n[video_room 2/6] name=b\n');
+  assert.deepEqual(t.snapshot(), { done: 2, total: 6, estimated: false });
+});
+
+test('breakdown reports done/total per category, estimating until announced', () => {
+  const t = createProgress({ calls: 20, rec_trans: 8, conf: 0, video_rooms: 6 });
+  t.feed('[plan] calls=3\n[call 1/3] x\n[call 2/3] y\n');
+  assert.deepEqual(t.breakdown(), {
+    calls: { done: 2, total: 3 }, rec_trans: { done: 0, total: 8 }, conf: { done: 0, total: 0 }, video_rooms: { done: 0, total: 6 },
+  });
 });

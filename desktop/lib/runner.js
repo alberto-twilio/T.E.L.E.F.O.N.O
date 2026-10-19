@@ -14,8 +14,17 @@ const summarize = (results) => {
     calls: count(results.calls),
     recordings: count(results.recordings_transcriptions),
     conferences: count(results.conferences),
-    errors: failed(results.calls) + failed(results.recordings_transcriptions) + failed(results.conferences),
+    videoRooms: count(results.video_rooms),
+    errors: failed(results.calls) + failed(results.recordings_transcriptions) + failed(results.conferences) + failed(results.video_rooms),
   };
+};
+
+// Exit code 0 only means wizard.py finished. Item-level errors decide the rest:
+// some failed and some worked = partial; every item failed = failed.
+const resolveStatus = (status, summary) => {
+  if (status !== 'success' || !summary || summary.errors === 0) return status;
+  const items = summary.calls + summary.recordings + summary.conferences + summary.videoRooms;
+  return summary.errors >= items ? 'failed' : 'partial';
 };
 
 const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
@@ -73,7 +82,7 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
       logStream.write(chunk);
       send('run:log', { runId: id, chunk });
       tracker.feed(chunk);
-      const snap = tracker.snapshot();
+      const snap = { ...tracker.snapshot(), cats: tracker.breakdown() };
       const key = JSON.stringify(snap);
       if (key !== lastProgress) {
         lastProgress = key;
@@ -91,9 +100,10 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
     const finish = (status, exitCode) => {
       if (run.finishedAt) return; // 'error' and 'close' can both fire
       run.finishedAt = new Date().toISOString();
-      run.status = status;
       run.exitCode = exitCode;
       run.summary = summarize(store.readResults(id));
+      // exit code 0 only means wizard.py finished; item-level errors (e.g. rejected Video rooms) make it partial
+      run.status = resolveStatus(status, run.summary);
       run.progress = tracker.snapshot();
       logStream.end();
       active.delete(id);
@@ -131,4 +141,4 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
   return { start, stop, stopAll, activeRunIds };
 };
 
-module.exports = { createRunner, summarize };
+module.exports = { createRunner, summarize, resolveStatus };

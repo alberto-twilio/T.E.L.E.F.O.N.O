@@ -99,6 +99,25 @@ seconds, and `0` disables it in favor of the old passage-based variety.
 Each completed call rolls its own duration independently, not one value
 for the whole batch.
 
+## Video rooms (stage/dev only)
+
+`video_rooms` is an opt-in category (never in the default set). It creates
+empty Video rooms through the REST API (`POST /v1/Rooms`) and completes each
+one right away. No participants and no recordings yet.
+
+```bash
+python3 wizard.py ... --categories video_rooms \
+  --video-rooms 5-10 --video-room-types group,group-small,peer-to-peer \
+  --video-room-prefix telefono
+```
+
+Group rooms are created with `AudioOnly=false` explicitly (stage's account
+default is audio-only, rejected with 53127). Only `group` is used by default: accounts that started using Video after
+2024-10-21 can't create the legacy types (errors 53126/53127). Types cycle
+through the list you give; a type the account rejects is recorded as an error and the run goes on. Video is
+refused on prod with no override flag. A Video-only run never touches voice
+numbers (they are only fetched when a Voice category runs).
+
 `--tier` is required in unattended mode, same reasoning as everywhere
 else: there's no interactive menu to fall back on, so it must be stated
 explicitly. A wrong tier fails cleanly (wrong host for these credentials

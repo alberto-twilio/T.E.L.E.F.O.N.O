@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
@@ -8,7 +8,7 @@ const keychain = require('./lib/keychain');
 const { createRunner } = require('./lib/runner');
 const { describeAccount } = require('./lib/describe');
 const { resolveCredentialIntent } = require('./lib/credintent');
-const { TIERS, CATEGORIES, REGIONS, DEFAULTS, validateProfile, validateCredentials } = require('./lib/args');
+const { TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, VIDEO_ROOM_TYPES, DEFAULTS, validateProfile, validateCredentials } = require('./lib/args');
 
 const PYTHON_FALLBACKS = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3'];
 
@@ -35,7 +35,7 @@ const send = (channel, payload) => {
 const PROFILE_FIELDS = [
   'id', 'name', 'tier', 'categories', 'calls', 'callDuration',
   'recordingsTranscriptions', 'conferences', 'regions', 'noProdCap',
-  'videoEnabled', 'videoParticipants', 'videoRooms', 'videoHold', 'videoPrefix',
+  'videoEnabled', 'videoRooms', 'videoRoomTypes', 'videoPrefix',
 ];
 const pickProfile = (p) => Object.fromEntries(PROFILE_FIELDS.filter((k) => k in p).map((k) => [k, p[k]]));
 
@@ -58,7 +58,7 @@ const main = async () => {
   }
 
   ipcMain.handle('app:info', () => ({
-    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, DEFAULTS,
+    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, VIDEO_ROOM_TYPES, DEFAULTS,
   }));
 
   // credentialsStored lets the UI flag a profile whose Keychain item is gone (deleted in Keychain Access, new Mac, ...)
@@ -98,6 +98,13 @@ const main = async () => {
   });
 
   // Re-reads parent/subaccount for an existing profile with its stored credentials (read-only lookup via wizard.py).
+  ipcMain.handle('profiles:console', (_e, id) => {
+    const profile = store.getProfile(id);
+    const url = profile && CONSOLE_URLS[profile.tier];
+    if (!url) return false;
+    shell.openExternal(url);
+    return true;
+  });
   ipcMain.handle('profiles:describe', async (_e, id) => {
     const profile = store.getProfile(id);
     if (!profile) throw new Error('Profile not found.');
