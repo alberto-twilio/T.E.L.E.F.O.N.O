@@ -9,6 +9,12 @@ PROD_HOST = "api.twilio.com"
 PROD_MAX_PER_CATEGORY = 30
 PROD_MAX_CALL_DURATION_SECONDS = 5 * 60
 
+VIDEO_PROD_MESSAGE = ("Video generation (video_rooms) is stage/dev only for now and is never "
+                      "available on prod. There is no flag to override this.")
+
+def video_allowed(host):
+    return not is_prod(host)
+
 def is_prod(host):
     return host == PROD_HOST
 

@@ -29,6 +29,7 @@ Two modes, same code path:
 Requires: Python 3, stdlib only. No pip install needed.
 """
 import os
+import re
 import sys
 import json
 import pprint
@@ -41,7 +42,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen import core, discovery, safety
 
 REGIONS = ["us1", "us2", "au1", "br1", "ie1", "jp1", "sg1", "de1", "in1"]
-ALL_CATEGORIES = ["calls", "recordings_transcriptions", "conferences"]
+VOICE_CATEGORIES = ["calls", "recordings_transcriptions", "conferences"]
+# video_rooms is opt-in (never part of the default selection) and stage/dev only, see safety.video_allowed
+ALL_CATEGORIES = VOICE_CATEGORIES + ["video_rooms"]
 
 
 def mask(value):
@@ -109,7 +112,7 @@ def build_arg_parser():
     p.add_argument("--tier", choices=discovery.TIERS,
                     help="Which environment these credentials belong to. Required in unattended mode, "
                          "asked interactively otherwise. Never guessed.")
-    p.add_argument("--categories", help="Comma list of: " + ",".join(ALL_CATEGORIES) + " (default: all)")
+    p.add_argument("--categories", help="Comma list of: " + ",".join(ALL_CATEGORIES) + " (default: the Voice ones; video_rooms is opt-in, stage/dev only)")
     p.add_argument("--calls", default="10-30", help="Fixed N, 'min-max', or 0 to skip. Default 10-30.")
     p.add_argument("--call-duration", dest="call_duration", default="1s-3m",
                     help="Target duration range for completed calls, e.g. '1s-3m', '30s-90s', "
@@ -117,6 +120,13 @@ def build_arg_parser():
                          "variety instead). Default 1s-3m. Each call rolls its own duration.")
     p.add_argument("--recordings-transcriptions", dest="recordings_transcriptions", default="5-10")
     p.add_argument("--conferences", default="5-10")
+    p.add_argument("--video-rooms", dest="video_rooms", default="5-10",
+                   help="Video rooms (REST only, no participants): fixed N, 'min-max', or 0. Default 5-10. "
+                        "Needs video_rooms in --categories. Stage/dev only.")
+    p.add_argument("--video-room-types", dest="video_room_types", default="",
+                   help="Comma list of room types to cycle: group,group-small,peer-to-peer (default: all three)")
+    p.add_argument("--video-room-prefix", dest="video_room_prefix", default="telefono",
+                   help="Room name prefix: letters, digits, - and _ (default telefono)")
     p.add_argument("--regions", default="", help="Comma list of conference regions, e.g. us1,au1,ie1")
     p.add_argument("--describe-account", dest="describe_account", action="store_true",
                    help="Read-only: confirm the account on --tier, print one JSON line "
@@ -215,13 +225,16 @@ def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase):
     return numbers, purchased_any
 
 
-def build_plan(args, unattended):
+def build_plan(args, unattended, allow_video=False):
     """Returns a plan of SPECS (strings), never pre-rolled numbers, see
     gen/core.py for why: rolling must happen at actual execution time so
     the same plan re-rolls fresh on every run, including a saved
     standalone script run again later."""
     if unattended:
-        categories = args.categories.split(",") if args.categories else ALL_CATEGORIES
+        categories = args.categories.split(",") if args.categories else VOICE_CATEGORIES
+        unknown = [c for c in categories if c not in ALL_CATEGORIES]
+        if unknown:
+            sys.exit(f"Unknown category: {', '.join(unknown)}. Valid: {', '.join(ALL_CATEGORIES)}.")
         plan = {
             "calls": args.calls if "calls" in categories else "0",
             "call_duration": args.call_duration if "calls" in categories else None,
@@ -231,10 +244,11 @@ def build_plan(args, unattended):
         regions_raw = args.regions
         chosen_regions = [r for r in regions_raw.split(",") if r] if regions_raw else []
         plan["conference_regions"] = chosen_regions or None
+        plan["video_rooms"] = args.video_rooms if "video_rooms" in categories else "0"
     else:
-        categories = select_multi("Categories", ALL_CATEGORIES)
+        categories = select_multi("Categories", ALL_CATEGORIES if allow_video else VOICE_CATEGORIES)
         plan = {"calls": "0", "call_duration": None, "recordings_transcriptions": "0",
-                 "conferences": "0", "conference_regions": None}
+                 "conferences": "0", "conference_regions": None, "video_rooms": "0"}
         if "calls" in categories:
             plan["calls"] = ask_count_spec("Calls")
             plan["call_duration"] = ask(
@@ -247,6 +261,19 @@ def build_plan(args, unattended):
             picked = select_multi("Conference regions (optional)", REGIONS + ["(none)"])
             chosen_regions = [r for r in picked if r != "(none)"]
             plan["conference_regions"] = chosen_regions or None
+        if "video_rooms" in categories:
+            plan["video_rooms"] = ask_count_spec("Video rooms", default_range=(5, 10))
+
+    if plan["video_rooms"] not in (None, "0", 0):
+        room_types = [t for t in (args.video_room_types or "").split(",") if t]
+        bad = [t for t in room_types if t not in core.VIDEO_ROOM_TYPES]
+        if bad:
+            sys.exit(f"Unknown video room type: {', '.join(bad)}. Valid: {', '.join(core.VIDEO_ROOM_TYPES)}.")
+        prefix = args.video_room_prefix
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", prefix):
+            sys.exit("--video-room-prefix: letters, digits, - and _ only (max 40).")
+        plan["video_room_types"] = room_types or None
+        plan["video_room_prefix"] = prefix
 
     return plan
 
@@ -262,6 +289,11 @@ def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path,
         f"--recordings-transcriptions {plan.get('recordings_transcriptions', '0')}",
         f"--conferences {plan.get('conferences', '0')}",
     ]
+    if plan.get("video_rooms") not in (None, "0", 0):
+        parts.append(f"--video-rooms {plan['video_rooms']}")
+        if plan.get("video_room_types"):
+            parts.append(f"--video-room-types {','.join(plan['video_room_types'])}")
+        parts.append(f"--video-room-prefix {plan.get('video_room_prefix', 'telefono')}")
     if plan.get("call_duration"):
         parts.append(f"--call-duration {plan['call_duration']}")
     if plan.get("conference_regions"):
@@ -352,13 +384,20 @@ def main():
             if not safety.confirm_prod(info):
                 sys.exit("Cancelled.")
 
-    numbers, purchased_any = handle_numbers(host, account_sid, auth_token, unattended, args.allow_purchase)
-    print(f"\nUsing {len(numbers)} number(s): {', '.join(n['phone'] for n in numbers)}")
+    if unattended and "video_rooms" in (args.categories or "").split(",") and not safety.video_allowed(host):
+        sys.exit(safety.VIDEO_PROD_MESSAGE)
 
-    plan = build_plan(args, unattended)
+    plan = build_plan(args, unattended, allow_video=safety.video_allowed(host))
     plan, notes = safety.cap_plan_for_tier(host, plan, skip_cap=args.no_prod_cap)
     for n in notes:
         print(f"NOTE: {n}")
+
+    # numbers are only needed (and only fetched/purchased) when a Voice category will run
+    if any(plan.get(c, "0") not in (None, "0", 0) for c in VOICE_CATEGORIES):
+        numbers, purchased_any = handle_numbers(host, account_sid, auth_token, unattended, args.allow_purchase)
+        print(f"\nUsing {len(numbers)} number(s): {', '.join(n['phone'] for n in numbers)}")
+    else:
+        numbers, purchased_any = [], False
     print("\nPlan:", json.dumps(plan, indent=2))
 
     if unattended:
