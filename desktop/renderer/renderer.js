@@ -376,17 +376,17 @@ const editView = (existing) => {
   recOn.addEventListener('change', () => {
     syncVideo();
     if (!recOn.checked) return;
-    showDialog([h('h2', {}, 'Playwright is required'),
+    showNotice('notice.playwright', 'Playwright is required', [
       h('p', {}, 'Video recordings need participants to join the rooms from a headless browser, which uses Playwright. Without it these items fail and the run ends as partial.'),
       h('p', {}, 'Install it once for the python3 this app uses:'),
       h('pre', { class: 'log' }, 'pip3 install playwright'),
-      h('p', { class: 'muted small' }, 'It reuses a Chromium already in ~/Library/Caches/ms-playwright; otherwise also run: python3 -m playwright install chromium'),
+      h('p', { class: 'muted small' }, 'It reuses a Chromium already in ~/Library/Caches/ms-playwright; otherwise also run: python3 -m playwright install chromium')],
+    () => showNotice('notice.macos-permissions', 'macOS may ask for permissions', [
       h('p', {}, 'The first time you run it, macOS may ask permission for "Electron" (this app) to:'),
       h('ul', {},
         h('li', {}, 'Find devices on local networks: choose Allow. Stage and dev servers sit on private VPN addresses, and without it participants may not be able to connect.'),
         h('li', {}, 'Use the microphone or camera: it uses a fake camera and mic and records nothing from your machine, so either answer is fine.')),
-      h('p', {}, 'You can change them later in System Settings > Privacy & Security.'),
-      h('div', { class: 'actions' }, h('button', { class: 'primary', onClick: closeDialog }, 'Got it'))]);
+      h('p', {}, 'You can change them later in System Settings > Privacy & Security.')]));
   });
   tempKeys.addEventListener('change', syncVideo);
   queueMicrotask(syncVideo);
@@ -473,6 +473,23 @@ const showDialog = (content) => {
   return d;
 };
 const closeDialog = () => $('#dialog').close();
+
+// An informational popup with a "Don't show this again" box (remembered per notice in localStorage).
+// `then` runs once it closes, however it was closed, so notices can be chained one popup at a time.
+const noticeHidden = (key) => {
+  try { return localStorage.getItem(key) === 'hidden'; } catch (e) { return false; }
+};
+const showNotice = (key, title, body, then) => {
+  if (noticeHidden(key)) { if (then) then(); return; }
+  const dontShow = h('input', { type: 'checkbox', id: 'notice-dont-show' });
+  const d = showDialog([h('h2', {}, title), ...body,
+    h('label', { class: 'check mt-12' }, dontShow, "Don't show this again"),
+    h('div', { class: 'actions' }, h('button', { class: 'primary', onClick: closeDialog }, 'Got it'))]);
+  d.addEventListener('close', () => {
+    if (dontShow.checked) { try { localStorage.setItem(key, 'hidden'); } catch (e) { /* convenience only */ } }
+    if (then) then();
+  }, { once: true });
+};
 
 const checkAccount = async (p, btn) => {
   btn.disabled = true;
