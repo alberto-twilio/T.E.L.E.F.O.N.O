@@ -51,6 +51,18 @@ const finished = (events) =>
     tick();
   });
 
+test('quick test: runs one item, records the kind, rejects unknown kinds', async (t) => {
+  const { store, profile, runner, events } = setup(t);
+  await assert.rejects(runner.start(profile.id, { quick: 'nope' }), /Unknown quick test/);
+  await runner.start(profile.id, { quick: 'call' });
+  const run = await finished(events);
+  assert.equal(run.quickTest, 'call');
+  const log = store.readLog(run.id);
+  assert.match(log, /--categories calls/);
+  assert.match(log, /--call-mix completed/);
+  assert.equal(store.getProfile(profile.id).calls, DEFAULTS.calls); // stored profile unchanged
+});
+
 test('successful run: logs streamed, env passed, summary recorded, history persisted', async (t) => {
   const { store, profile, runner, events } = setup(t);
   await runner.start(profile.id);
