@@ -350,7 +350,8 @@ const editView = (existing) => {
   };
   videoText.keySid.placeholder = p.videoKeyStored ? `SK…${p.videoKeyHint || ''} (stored)` : 'SKxxxxxxxx…';
   videoText.keySecret.placeholder = p.videoKeyStored ? '•••••••• (stored; leave blank to keep)' : 'API key secret';
-  const videoTypeBoxes = checks('videoRoomTypes', state.info.VIDEO_ROOM_TYPES, p.videoRoomTypes || []);
+  const videoTypeBoxes = checks('videoRoomTypes', state.info.VIDEO_ROOM_TYPES, p.videoRoomTypes || [],
+    { 'group-small': 'group-small (legacy)', 'peer-to-peer': 'peer-to-peer (legacy)' });
   const keyFields = h('div', { class: 'grid mt-12' },
     field('API Key SID', videoText.keySid, 'Stored in the macOS Keychain, never in the profile file.'),
     field('API Key secret', videoText.keySecret));
@@ -395,7 +396,7 @@ const editView = (existing) => {
       h('div', { class: 'grid mt-12' },
         field('Empty rooms', videoText.rooms, 'Number or min-max range, 0 to skip. Re-rolled every run.'),
         field('Room name prefix', videoText.prefix, 'Rooms are named <prefix>-<stamp>-<n>.')),
-      h('div', { class: 'mt-12' }, h('label', {}, 'Room types for empty rooms (none ticked = group only; legacy types only work on accounts that used Video before Oct 21 2024)'), videoTypeBoxes),
+      h('div', { class: 'mt-12' }, h('label', {}, 'Room types for empty rooms (none ticked = group only). Legacy types fail with error 53126 on accounts that started using Video after Oct 21 2024.'), videoTypeBoxes),
       h('label', { class: 'check mt-12' }, recOn, 'Rooms with participants and recordings'),
       h('div', { class: 'grid mt-12' },
         field('Recorded rooms', videoText.recRooms),
