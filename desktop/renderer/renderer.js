@@ -196,7 +196,7 @@ const profileView = (p) => {
         runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
         h('button', { disabled: !p.credentialsStored || !canRun(), title: p.credentialsStored ? 'Read whether this is a parent or a subaccount' : 'No credentials', onClick: (e) => checkAccount(p, e.currentTarget) }, 'Check account'),
-        h('button', { title: `Open the ${p.tier} Twilio console in your browser (log in as this account)`, onClick: () => api.openConsole(p.id) }, 'Open in Console'),
+        h('button', { title: `Open the ${p.tier} Twilio console in your browser (log in as this account)`, onClick: () => api.openConsole(p.id) }, 'Open account in 1C'),
         h('button', { onClick: () => confirmDuplicate(p) }, 'Duplicate'),
         h('button', { class: 'danger', onClick: () => confirmDelete(p) }, 'Delete'))),
     p.credentialsStored ? null : h('div', { class: 'callout mt-14' },
