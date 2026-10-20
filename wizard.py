@@ -44,7 +44,9 @@ from gen import core, discovery, safety
 REGIONS = ["us1", "us2", "au1", "br1", "ie1", "jp1", "sg1", "de1", "in1"]
 VOICE_CATEGORIES = ["calls", "recordings_transcriptions", "conferences"]
 # video_rooms is opt-in (never part of the default selection) and stage/dev only, see safety.video_allowed
-ALL_CATEGORIES = VOICE_CATEGORIES + ["video_rooms"]
+ALL_CATEGORIES = VOICE_CATEGORIES + ["video_rooms", "video_recordings"]
+# video_recordings drives a headless browser (Playwright, see gen/video_recordings.py): unattended/--categories only
+INTERACTIVE_CATEGORIES = VOICE_CATEGORIES + ["video_rooms"]
 
 
 def mask(value):
@@ -127,6 +129,17 @@ def build_arg_parser():
                    help="Comma list of room types to cycle: group,group-small,peer-to-peer (default: all three)")
     p.add_argument("--video-room-prefix", dest="video_room_prefix", default="telefono",
                    help="Room name prefix: letters, digits, - and _ (default telefono)")
+    p.add_argument("--video-recordings", dest="video_recordings", default="2-6",
+                   help="Participants that join recorded Video rooms (Playwright needed): N, 'min-max' or 0. "
+                        "Default 2-6. Needs video_recordings in --categories. Stage/dev only.")
+    p.add_argument("--video-rec-rooms", dest="video_rec_rooms", default="2-3",
+                   help="Rooms those participants are spread over. Default 2-3.")
+    p.add_argument("--video-hold", dest="video_hold", default="5-15",
+                   help="How long each participant stays connected, e.g. 5-15 (seconds) or 5s-1m. Default 5-15.")
+    p.add_argument("--video-key-env", dest="video_key_env",
+                   help="Env var NAME holding an API Key SID for Video access tokens. Without it a temporary "
+                        "key is created for the run and deleted after.")
+    p.add_argument("--video-secret-env", dest="video_secret_env", help="Env var NAME holding that API Key's secret.")
     p.add_argument("--regions", default="", help="Comma list of conference regions, e.g. us1,au1,ie1")
     p.add_argument("--describe-account", dest="describe_account", action="store_true",
                    help="Read-only: confirm the account on --tier, print one JSON line "
@@ -245,10 +258,11 @@ def build_plan(args, unattended, allow_video=False):
         chosen_regions = [r for r in regions_raw.split(",") if r] if regions_raw else []
         plan["conference_regions"] = chosen_regions or None
         plan["video_rooms"] = args.video_rooms if "video_rooms" in categories else "0"
+        plan["video_recordings"] = args.video_recordings if "video_recordings" in categories else "0"
     else:
-        categories = select_multi("Categories", ALL_CATEGORIES if allow_video else VOICE_CATEGORIES)
+        categories = select_multi("Categories", INTERACTIVE_CATEGORIES if allow_video else VOICE_CATEGORIES)
         plan = {"calls": "0", "call_duration": None, "recordings_transcriptions": "0",
-                 "conferences": "0", "conference_regions": None, "video_rooms": "0"}
+                 "conferences": "0", "conference_regions": None, "video_rooms": "0", "video_recordings": "0"}
         if "calls" in categories:
             plan["calls"] = ask_count_spec("Calls")
             plan["call_duration"] = ask(
@@ -264,7 +278,20 @@ def build_plan(args, unattended, allow_video=False):
         if "video_rooms" in categories:
             plan["video_rooms"] = ask_count_spec("Video rooms", default_range=(5, 10))
 
-    if plan["video_rooms"] not in (None, "0", 0):
+    if plan["video_recordings"] not in (None, "0", 0):
+        try:
+            core.parse_duration_range_spec(args.video_hold)
+            core.parse_count_spec(args.video_rec_rooms)
+        except ValueError:
+            sys.exit("--video-hold must look like 5-15 (seconds) and --video-rec-rooms like 2-3.")
+        if bool(args.video_key_env) != bool(args.video_secret_env):
+            sys.exit("--video-key-env and --video-secret-env go together.")
+        plan["video_rec_rooms"] = args.video_rec_rooms
+        plan["video_hold"] = args.video_hold
+        plan["video_key_env"] = args.video_key_env
+        plan["video_secret_env"] = args.video_secret_env
+
+    if plan["video_rooms"] not in (None, "0", 0) or plan["video_recordings"] not in (None, "0", 0):
         room_types = [t for t in (args.video_room_types or "").split(",") if t]
         bad = [t for t in room_types if t not in core.VIDEO_ROOM_TYPES]
         if bad:
@@ -294,6 +321,11 @@ def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path,
         if plan.get("video_room_types"):
             parts.append(f"--video-room-types {','.join(plan['video_room_types'])}")
         parts.append(f"--video-room-prefix {plan.get('video_room_prefix', 'telefono')}")
+    if plan.get("video_recordings") not in (None, "0", 0):
+        parts.append(f"--video-recordings {plan['video_recordings']} --video-rec-rooms {plan.get('video_rec_rooms', '2-3')} "
+                     f"--video-hold {plan.get('video_hold', '5-15')}")
+        if plan.get("video_key_env"):
+            parts.append(f"--video-key-env {plan['video_key_env']} --video-secret-env {plan['video_secret_env']}")
     if plan.get("call_duration"):
         parts.append(f"--call-duration {plan['call_duration']}")
     if plan.get("conference_regions"):
@@ -347,6 +379,24 @@ def describe_account(account_sid, info):
     return {"kind": kind, "status": info.get("status"), "friendly_name": info.get("friendly_name")}
 
 
+def run_video_recordings_step(config, account_sid, auth_token):
+    """Video recordings need Playwright, so they live outside gen/core.py and are merged into the same results JSON."""
+    from gen import video_recordings
+    cfg = {"host": config["host"], "video_host": core.video_host_for(config["host"]), "account_sid": account_sid,
+           "auth_header": core.build_auth_header(account_sid, auth_token)}
+    out = video_recordings.run_video_recordings(cfg, config["plan"])
+    path = config["results_path"]
+    try:
+        with open(path) as f:
+            results = json.load(f)
+    except (OSError, ValueError):
+        results = {}
+    results.update(out)
+    with open(path, "w") as f:
+        json.dump(results, f, indent=2)
+    video_recordings.print_summary(out)
+
+
 def main():
     args = build_arg_parser().parse_args()
     account_sid, auth_token, unattended, pre_tier = resolve_credentials(args)
@@ -384,7 +434,7 @@ def main():
             if not safety.confirm_prod(info):
                 sys.exit("Cancelled.")
 
-    if unattended and "video_rooms" in (args.categories or "").split(",") and not safety.video_allowed(host):
+    if unattended and {"video_rooms", "video_recordings"} & set((args.categories or "").split(",")) and not safety.video_allowed(host):
         sys.exit(safety.VIDEO_PROD_MESSAGE)
 
     plan = build_plan(args, unattended, allow_video=safety.video_allowed(host))
@@ -423,9 +473,14 @@ def main():
 
     out_path = args.out or f"voice_batch_{tier}_{datetime.date.today():%Y%m%d}.py"
 
+    if mode in ("save", "both") and plan.get("video_recordings") not in (None, "0", 0):
+        sys.exit("video_recordings needs a headless browser and cannot be saved as a standalone script. Use --mode run.")
+
     if mode in ("run", "both"):
         print("\nRunning...\n")
         core.run(config)
+        if plan.get("video_recordings") not in (None, "0", 0):
+            run_video_recordings_step(config, account_sid, auth_token)
 
     if mode in ("save", "both"):
         if not unattended:

@@ -56,7 +56,7 @@ test('successful run: logs streamed, env passed, summary recorded, history persi
   await runner.start(profile.id);
   const run = await finished(events);
   assert.equal(run.status, 'partial'); // exit 0 but 1 item errored
-  assert.deepEqual(run.summary, { calls: 2, recordings: 0, conferences: 1, videoRooms: 0, errors: 1 });
+  assert.deepEqual(run.summary, { calls: 2, recordings: 0, conferences: 1, videoRooms: 0, videoRecordings: 0, errors: 1 });
   const log = store.readLog(run.id);
   assert.match(log, /sid-visible: ACtest/);
   assert.ok(!log.includes('secret-token'));

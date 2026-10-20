@@ -22,8 +22,11 @@ const DEFAULTS = {
   callDuration: '1s-3m',
   recordingsTranscriptions: '5-10',
   conferences: '5-10',
-  // Video rooms (REST only: rooms are created and completed, no participants yet)
+  // Video: empty rooms (REST) and recorded rooms with participants (headless browser)
   videoRooms: '5-10',
+  videoRecRooms: '2-3',
+  videoParticipants: '2-6',
+  videoHold: '5-15',
   videoPrefix: 'telefono',
 };
 const VIDEO_ROOM_TYPES = ['group', 'group-small', 'peer-to-peer'];
@@ -49,14 +52,24 @@ const validateDuration = (spec) => {
 };
 
 const PREFIX_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const HOLD_RE = /^\d+[sm]?-\d+[sm]?$/;
+const positive = (spec) => Number(String(spec).trim().split('-').pop()) >= 1;
 const validateVideo = (p) => {
   const errors = [];
   if (p.tier === 'prod') errors.push('Video is not available on prod.');
-  const err = validateCount('Video rooms', p.videoRooms);
-  if (err) errors.push(err);
-  else if (Number(String(p.videoRooms).trim().split('-').pop()) < 1) errors.push('Video rooms: must be at least 1.');
+  const roomsErr = validateCount('Video rooms', p.videoRooms);
+  if (roomsErr) errors.push(roomsErr);
+  if (!roomsErr && !positive(p.videoRooms) && !p.videoRecordingsEnabled) errors.push('Video: set rooms above 0 or enable recordings.');
   if ((p.videoRoomTypes || []).some((t) => !VIDEO_ROOM_TYPES.includes(t))) errors.push('Unknown video room type.');
   if (!PREFIX_RE.test(String(p.videoPrefix).trim())) errors.push('Video room prefix: letters, digits, - and _ only (max 40).');
+  if (p.videoRecordingsEnabled) {
+    for (const [label, spec] of [['Video participants', p.videoParticipants], ['Video recorded rooms', p.videoRecRooms]]) {
+      const err = validateCount(label, spec);
+      if (err) errors.push(err);
+      else if (!positive(spec)) errors.push(`${label}: must be at least 1.`);
+    }
+    if (!HOLD_RE.test(String(p.videoHold).trim())) errors.push('Video hold time: use a range like 5-15 (seconds).');
+  }
   return errors;
 };
 
@@ -95,7 +108,19 @@ const validateCredentials = ({ sid, token }) => {
 const envNames = (tier) => ({
   sidEnv: `VOICEGEN_SID_${tier.toUpperCase()}`,
   tokenEnv: `VOICEGEN_TOKEN_${tier.toUpperCase()}`,
+  videoKeyEnv: `VOICEGEN_VKEY_${tier.toUpperCase()}`,
+  videoSecretEnv: `VOICEGEN_VSECRET_${tier.toUpperCase()}`,
 });
+
+// whether a run of this profile needs a stored API key (recordings with temporary keys turned off)
+const needsVideoKey = (p) => Boolean(p.videoEnabled && p.videoRecordingsEnabled && p.videoTempKeys === false);
+
+// the --categories list for a profile: Voice ones plus whichever Video parts are on
+const categoriesFor = (p) => [
+  ...p.categories,
+  ...(p.videoEnabled && positive(p.videoRooms) ? ['video_rooms'] : []),
+  ...(p.videoEnabled && p.videoRecordingsEnabled ? ['video_recordings'] : []),
+];
 
 // opts: { wizardPath, resultsPath, confirmProd }
 // Credential VALUES are never part of argv, only the names of the env vars the
@@ -104,13 +129,13 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
   const errors = validateProfile(profile);
   if (errors.length) throw new Error(errors.join(' '));
 
-  const { sidEnv, tokenEnv } = envNames(profile.tier);
+  const { sidEnv, tokenEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier);
   const args = [
     '-u', wizardPath,
     '--sid-env', sidEnv,
     '--token-env', tokenEnv,
     '--tier', profile.tier,
-    '--categories', [...profile.categories, ...(profile.videoEnabled ? ['video_rooms'] : [])].join(','),
+    '--categories', categoriesFor(profile).join(','),
     '--calls', String(profile.calls).trim(),
     '--call-duration', String(profile.callDuration).trim(),
     '--recordings-transcriptions', String(profile.recordingsTranscriptions).trim(),
@@ -122,6 +147,12 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
   if (profile.videoEnabled) {
     args.push('--video-rooms', String(profile.videoRooms).trim(), '--video-room-prefix', String(profile.videoPrefix).trim());
     if (profile.videoRoomTypes && profile.videoRoomTypes.length) args.push('--video-room-types', profile.videoRoomTypes.join(','));
+    if (profile.videoRecordingsEnabled) {
+      args.push('--video-recordings', String(profile.videoParticipants).trim(), '--video-rec-rooms', String(profile.videoRecRooms).trim(),
+        '--video-hold', String(profile.videoHold).trim());
+      // API key values reach the child only as env vars named here, same as the account credentials
+      if (needsVideoKey(profile)) args.push('--video-key-env', videoKeyEnv, '--video-secret-env', videoSecretEnv);
+    }
   }
 
   if (profile.tier === 'prod') {
@@ -138,5 +169,5 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
 
 module.exports = {
   TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, VIDEO_ROOM_TYPES, DEFAULTS,
-  validateProfile, validateCredentials, envNames, buildWizardArgs,
+  validateProfile, validateCredentials, envNames, needsVideoKey, categoriesFor, buildWizardArgs,
 };

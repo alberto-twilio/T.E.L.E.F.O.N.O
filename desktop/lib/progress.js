@@ -7,14 +7,14 @@
 // reports `estimated: true`.
 //
 // Parsed formats (printed by gen/core.py, keep them in sync):
-//   [plan] calls=N | rec_trans=N | conf=N | video_rooms=N
-//   [call i/n]  [rec/trans i/n]  [conf i/n]  [video_room i/n]
+//   [plan] calls=N | rec_trans=N | conf=N | video_rooms=N | video_recordings=N
+//   [call i/n]  [rec/trans i/n]  [conf i/n]  [video_room i/n]  [video_rec i/n]
 
 const PROD_MAX_PER_CATEGORY = 30; // mirrors gen/safety.py, estimate only
 
-const CATEGORY_BY_PREFIX = { call: 'calls', 'rec/trans': 'rec_trans', conf: 'conf', video_room: 'video_rooms' };
-const PLAN_RE = /^\[plan\] (calls|rec_trans|conf|video_rooms)=(\d+)/;
-const ITEM_RE = /^\[(call|rec\/trans|conf|video_room) (\d+)\/(\d+)\]/;
+const CATEGORY_BY_PREFIX = { call: 'calls', 'rec/trans': 'rec_trans', conf: 'conf', video_room: 'video_rooms', video_rec: 'video_recordings' };
+const PLAN_RE = /^\[plan\] (calls|rec_trans|conf|video_rooms|video_recordings)=(\d+)/;
+const ITEM_RE = /^\[(call|rec\/trans|conf|video_room|video_rec) (\d+)\/(\d+)\]/;
 
 // Expected item count for a count spec ("0", "12", "10-30"): midpoint of a range.
 const expectedFromSpec = (spec, cap = Infinity) => {
@@ -33,12 +33,13 @@ const expectedCounts = (profile) => {
     rec_trans: on('recordings_transcriptions') ? expectedFromSpec(profile.recordingsTranscriptions, cap) : 0,
     conf: on('conferences') ? expectedFromSpec(profile.conferences, cap) : 0,
     video_rooms: profile.videoEnabled && profile.tier !== 'prod' ? expectedFromSpec(profile.videoRooms) : 0,
+    video_recordings: profile.videoEnabled && profile.videoRecordingsEnabled && profile.tier !== 'prod' ? expectedFromSpec(profile.videoParticipants) : 0,
   };
 };
 
 const createProgress = (expected) => {
   const planned = {};
-  const done = { calls: 0, rec_trans: 0, conf: 0, video_rooms: 0 };
+  const done = { calls: 0, rec_trans: 0, conf: 0, video_rooms: 0, video_recordings: 0 };
   let buffer = '';
 
   const feedLine = (line) => {
