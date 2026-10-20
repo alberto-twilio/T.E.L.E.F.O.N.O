@@ -136,6 +136,9 @@ def build_arg_parser():
                    help="Rooms those participants are spread over. Default 2-3.")
     p.add_argument("--video-hold", dest="video_hold", default="5-15",
                    help="How long each participant stays connected, e.g. 5-15 (seconds) or 5s-1m. Default 5-15.")
+    p.add_argument("--video-compose", dest="video_compose", action="store_true",
+                   help="After recording, create one composition (grid, mp4, 640x480) per recorded room. "
+                        "Needs video_recordings in --categories.")
     p.add_argument("--video-key-env", dest="video_key_env",
                    help="Env var NAME holding an API Key SID for Video access tokens. Without it a temporary "
                         "key is created for the run and deleted after.")
@@ -288,6 +291,7 @@ def build_plan(args, unattended):
             sys.exit("--video-key-env and --video-secret-env go together.")
         plan["video_rec_rooms"] = args.video_rec_rooms
         plan["video_hold"] = args.video_hold
+        plan["video_compose"] = bool(args.video_compose)
         plan["video_key_env"] = args.video_key_env
         plan["video_secret_env"] = args.video_secret_env
 
@@ -324,6 +328,8 @@ def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path,
     if plan.get("video_recordings") not in (None, "0", 0):
         parts.append(f"--video-recordings {plan['video_recordings']} --video-rec-rooms {plan.get('video_rec_rooms', '2-3')} "
                      f"--video-hold {plan.get('video_hold', '5-15')}")
+        if plan.get("video_compose"):
+            parts.append("--video-compose")
         if plan.get("video_key_env"):
             parts.append(f"--video-key-env {plan['video_key_env']} --video-secret-env {plan['video_secret_env']}")
     if plan.get("call_duration"):

@@ -14,6 +14,8 @@ complete the room -> wait for its recordings to reach `completed`.
 Progress lines parsed by desktop/lib/progress.js (keep the format):
   [plan] video_recordings=N        N = participants
   [video_rec i/n] room=... identity=... hold=Ns err=...
+  [plan] video_compositions=N      N = rooms with completed recordings (--video-compose)
+  [video_comp i/n] room=... composition=... status=... err=...
 """
 import os
 import json
@@ -34,6 +36,7 @@ from . import core
 TWILIO_VIDEO_JS = "https://unpkg.com/twilio-video@2.36.1/dist/twilio-video.min.js"
 PAGE_ORIGIN = "https://telefono.local"
 RECORDING_WAIT_SECONDS = 90
+COMPOSITION_WAIT_SECONDS = 300
 
 # Stage/dev hosts resolve to private addresses (VPN); Chrome would otherwise block
 # a "public" page from opening the signaling websocket to them.
@@ -206,6 +209,52 @@ async def _run(cfg, plan, n_rooms, per_room, holds_spec):
     return entries, rooms_out
 
 
+def compose_rooms(cfg, rooms):
+    """One composition (grid, mp4, 640x480, every audio source) per room whose recordings completed.
+    Rooms are submitted first, then polled together, so the waits overlap instead of adding up."""
+    video_host, auth = cfg["video_host"], cfg["auth_header"]
+    todo = [r for r in rooms if r["recordings"] and all(x["status"] == "completed" for x in r["recordings"])]
+    print(f"[plan] video_compositions={len(todo)}", flush=True)  # parsed by desktop/lib/progress.js, keep the format
+    out, pending = [], []
+    for room in todo:
+        comp = core.video_request(video_host, auth, "POST", "/Compositions", {
+            "RoomSid": room["room_sid"], "AudioSources": "*", "VideoLayout": json.dumps({"grid": {"video_sources": ["*"]}}),
+            "Resolution": "640x480", "Format": "mp4"})
+        entry = {"room_name": room["room_name"], "room_sid": room["room_sid"], "composition_sid": comp.get("sid"),
+                 "status": comp.get("status"), "error": None if comp.get("sid") else f"composition not created: {comp.get('body')}"}
+        out.append(entry)
+        (pending if comp.get("sid") else []).append(entry)
+
+    done = 0
+
+    def report(entry):
+        nonlocal done
+        done += 1
+        print(f"[video_comp {done}/{len(todo)}] room={entry['room_name']} composition={entry['composition_sid']} "
+              f"status={entry['status']} err={entry['error']}", flush=True)
+
+    for entry in out:
+        if entry["error"]:
+            report(entry)
+    deadline = time.time() + COMPOSITION_WAIT_SECONDS
+    while pending and time.time() < deadline:
+        time.sleep(5)
+        for entry in list(pending):
+            c = core.video_request(video_host, auth, "GET", f"/Compositions/{entry['composition_sid']}")
+            if c.get("error"):
+                continue
+            entry["status"] = c.get("status")
+            if entry["status"] in ("completed", "failed", "deleted"):
+                if entry["status"] != "completed":
+                    entry["error"] = f"composition {entry['status']}"
+                pending.remove(entry)
+                report(entry)
+    for entry in pending:
+        entry["error"] = f"composition still {entry['status']} after {COMPOSITION_WAIT_SECONDS}s"
+        report(entry)
+    return out
+
+
 def _raise_stopped(*_):
     raise SystemExit("stopped")
 
@@ -253,7 +302,10 @@ def run_video_recordings(cfg, plan):
             res = _api(cfg["host"], cfg["auth_header"], "DELETE",
                        f"/2010-04-01/Accounts/{cfg['account_sid']}/Keys/{temp_key}.json")
             print("Temporary API key removed." if not res.get("error") else f"WARNING: could not delete temporary API key {temp_key}: {res.get('body')}", flush=True)
-    return {"video_recordings": entries, "video_recording_rooms": rooms}
+    out = {"video_recordings": entries, "video_recording_rooms": rooms}
+    if plan.get("video_compose"):
+        out["video_compositions"] = compose_rooms(cfg, rooms)
+    return out
 
 
 def print_summary(out):
@@ -262,3 +314,6 @@ def print_summary(out):
     done = sum(1 for r in recs if r["status"] == "completed")
     joined = sum(1 for e in out.get("video_recordings", []) if e["joined"])
     print(f"Video recordings: {joined} participant(s) joined, {done}/{len(recs)} recording(s) completed")
+    comps = out.get("video_compositions")
+    if comps is not None:
+        print(f"Video compositions: {sum(1 for c in comps if c['status'] == 'completed')}/{len(comps)} completed")

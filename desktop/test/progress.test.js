@@ -8,8 +8,8 @@ const profile = (over = {}) => ({
 });
 
 test('expected counts use range midpoints, 0 for disabled categories, prod cap only when not lifted', () => {
-  assert.deepEqual(expectedCounts(profile()), { calls: 20, rec_trans: 8, conf: 8, video_rooms: 0, video_recordings: 0 });
-  assert.deepEqual(expectedCounts(profile({ categories: ['conferences'] })), { calls: 0, rec_trans: 0, conf: 8, video_rooms: 0, video_recordings: 0 });
+  assert.deepEqual(expectedCounts(profile()), { calls: 20, rec_trans: 8, conf: 8, video_rooms: 0, video_recordings: 0, video_compositions: 0 });
+  assert.deepEqual(expectedCounts(profile({ categories: ['conferences'] })), { calls: 0, rec_trans: 0, conf: 8, video_rooms: 0, video_recordings: 0, video_compositions: 0 });
   assert.equal(expectedCounts(profile({ tier: 'prod', calls: '50-60' })).calls, 30);
   assert.equal(expectedCounts(profile({ tier: 'prod', calls: '50-60', noProdCap: true })).calls, 55);
   assert.equal(expectedFromSpec('12'), 12);
@@ -69,10 +69,10 @@ test('video rooms count as items and feed the estimate', () => {
 });
 
 test('breakdown reports done/total per category, estimating until announced', () => {
-  const t = createProgress({ calls: 20, rec_trans: 8, conf: 0, video_rooms: 6, video_recordings: 0 });
+  const t = createProgress({ calls: 20, rec_trans: 8, conf: 0, video_rooms: 6, video_recordings: 0, video_compositions: 0 });
   t.feed('[plan] calls=3\n[call 1/3] x\n[call 2/3] y\n');
   assert.deepEqual(t.breakdown(), {
-    calls: { done: 2, total: 3 }, rec_trans: { done: 0, total: 8 }, conf: { done: 0, total: 0 }, video_rooms: { done: 0, total: 6 }, video_recordings: { done: 0, total: 0 },
+    calls: { done: 2, total: 3 }, rec_trans: { done: 0, total: 8 }, conf: { done: 0, total: 0 }, video_rooms: { done: 0, total: 6 }, video_recordings: { done: 0, total: 0 }, video_compositions: { done: 0, total: 0 },
   });
 });
 
@@ -82,4 +82,13 @@ test('video recordings count participants as items', () => {
   const t = createProgress(expectedCounts(p));
   t.feed('[plan] video_recordings=5\n[video_rec 1/5] room=r identity=p1 hold=5s joined=True err=None\n');
   assert.deepEqual(t.snapshot(), { done: 1, total: 5, estimated: false });
+});
+
+test('video compositions count one item per recorded room', () => {
+  const p = profile({ categories: [], videoEnabled: true, videoRooms: '0', videoRecordingsEnabled: true, videoComposeEnabled: true, videoRecRooms: '2-3' });
+  assert.equal(expectedCounts(p).video_compositions, 3);
+  assert.equal(expectedCounts({ ...p, videoComposeEnabled: false }).video_compositions, 0);
+  const t = createProgress(expectedCounts(p));
+  t.feed('[plan] video_compositions=2\n[video_comp 1/2] room=r composition=CJ1 status=completed err=None\n');
+  assert.equal(t.breakdown().video_compositions.done, 1);
 });

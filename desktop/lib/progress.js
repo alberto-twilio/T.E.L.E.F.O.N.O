@@ -7,14 +7,14 @@
 // reports `estimated: true`.
 //
 // Parsed formats (printed by gen/core.py, keep them in sync):
-//   [plan] calls=N | rec_trans=N | conf=N | video_rooms=N | video_recordings=N
-//   [call i/n]  [rec/trans i/n]  [conf i/n]  [video_room i/n]  [video_rec i/n]
+//   [plan] calls=N | rec_trans=N | conf=N | video_rooms=N | video_recordings=N | video_compositions=N
+//   [call i/n]  [rec/trans i/n]  [conf i/n]  [video_room i/n]  [video_rec i/n]  [video_comp i/n]
 
 const PROD_MAX_PER_CATEGORY = 30; // mirrors gen/safety.py, estimate only
 
-const CATEGORY_BY_PREFIX = { call: 'calls', 'rec/trans': 'rec_trans', conf: 'conf', video_room: 'video_rooms', video_rec: 'video_recordings' };
-const PLAN_RE = /^\[plan\] (calls|rec_trans|conf|video_rooms|video_recordings)=(\d+)/;
-const ITEM_RE = /^\[(call|rec\/trans|conf|video_room|video_rec) (\d+)\/(\d+)\]/;
+const CATEGORY_BY_PREFIX = { call: 'calls', 'rec/trans': 'rec_trans', conf: 'conf', video_room: 'video_rooms', video_rec: 'video_recordings', video_comp: 'video_compositions' };
+const PLAN_RE = /^\[plan\] (calls|rec_trans|conf|video_rooms|video_recordings|video_compositions)=(\d+)/;
+const ITEM_RE = /^\[(call|rec\/trans|conf|video_room|video_rec|video_comp) (\d+)\/(\d+)\]/;
 
 // Expected item count for a count spec ("0", "12", "10-30"): midpoint of a range.
 const expectedFromSpec = (spec, cap = Infinity) => {
@@ -34,12 +34,13 @@ const expectedCounts = (profile) => {
     conf: on('conferences') ? expectedFromSpec(profile.conferences, cap) : 0,
     video_rooms: profile.videoEnabled ? expectedFromSpec(profile.videoRooms, cap) : 0,
     video_recordings: profile.videoEnabled && profile.videoRecordingsEnabled ? expectedFromSpec(profile.videoParticipants, cap) : 0,
+    video_compositions: profile.videoEnabled && profile.videoRecordingsEnabled && profile.videoComposeEnabled ? expectedFromSpec(profile.videoRecRooms, cap) : 0,
   };
 };
 
 const createProgress = (expected) => {
   const planned = {};
-  const done = { calls: 0, rec_trans: 0, conf: 0, video_rooms: 0, video_recordings: 0 };
+  const done = { calls: 0, rec_trans: 0, conf: 0, video_rooms: 0, video_recordings: 0, video_compositions: 0 };
   let buffer = '';
 
   const feedLine = (line) => {

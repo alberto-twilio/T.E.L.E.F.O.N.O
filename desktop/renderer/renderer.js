@@ -185,7 +185,7 @@ const profileView = (p) => {
     ['Video rooms', p.videoEnabled
       ? `${p.videoRooms}  (${p.videoRoomTypes && p.videoRoomTypes.length ? p.videoRoomTypes.join(', ') : 'group only'}; prefix ${p.videoPrefix})` : 'off'],
     ['Video recordings', p.videoEnabled && p.videoRecordingsEnabled
-      ? `${p.videoParticipants} participants in ${p.videoRecRooms} rooms, hold ${p.videoHold}s (${p.videoTempKeys === false ? 'own API key' : 'temporary API keys'})` : 'off'],
+      ? `${p.videoParticipants} participants in ${p.videoRecRooms} rooms, hold ${p.videoHold}s (${p.videoTempKeys === false ? 'own API key' : 'temporary API keys'})${p.videoComposeEnabled ? ', composed to mp4' : ''}` : 'off'],
   ];
   if (p.tier === 'prod') stats.push(['Prod caps', p.noProdCap ? 'lifted (--no-prod-cap)' : '30 per category, 5m per call']);
 
@@ -212,7 +212,7 @@ const profileView = (p) => {
 const runsTable = (runs) =>
   h('div', { class: 'card tight' },
     h('table', {},
-      h('thead', {}, h('tr', {}, ['Started', 'Status', 'Duration', 'Calls', 'Rec.', 'Conf.', 'Rooms', 'Video rec.', 'Errors'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Started', 'Status', 'Duration', 'Calls', 'Rec.', 'Conf.', 'Rooms', 'Video rec.', 'Comp.', 'Errors'].map((t) => h('th', {}, t)))),
       h('tbody', {}, runs.map((r) => {
         const s = r.summary;
         return h('tr', { onClick: () => openRun(r.id) },
@@ -224,6 +224,7 @@ const runsTable = (runs) =>
           countCell(r, 'conf', s && s.conferences),
           countCell(r, 'video_rooms', s && (s.videoRooms || 0)),
           countCell(r, 'video_recordings', s && (s.videoRecordings || 0)),
+          countCell(r, 'video_compositions', s && (s.videoCompositions || 0)),
           h('td', {}, s ? String(s.errors) : '–'));
       }))));
 
@@ -338,6 +339,7 @@ const editView = (existing) => {
 
   const videoOn = h('input', { type: 'checkbox', id: 'f-video-on', checked: Boolean(p.videoEnabled) });
   const recOn = h('input', { type: 'checkbox', id: 'f-video-rec-on', checked: p.videoRecordingsEnabled === true });
+  const composeOn = h('input', { type: 'checkbox', id: 'f-video-compose-on', checked: p.videoComposeEnabled === true });
   const tempKeys = h('input', { type: 'checkbox', id: 'f-video-tempkeys', checked: p.videoTempKeys !== false });
   const videoText = {
     rooms: text('f-video-rooms', V('videoRooms')),
@@ -362,6 +364,7 @@ const editView = (existing) => {
     const rec = on && recOn.checked;
     recOn.disabled = !on;
     tempKeys.disabled = !rec;
+    composeOn.disabled = !rec;
     for (const i of [videoText.rooms, videoText.prefix, ...videoTypeBoxes.querySelectorAll('input')]) i.disabled = !on;
     for (const i of [videoText.recRooms, videoText.participants, videoText.hold]) i.disabled = !rec;
     keyFields.style.display = rec && !tempKeys.checked ? '' : 'none';
@@ -402,6 +405,7 @@ const editView = (existing) => {
         field('Recorded rooms', videoText.recRooms),
         field('Participants', videoText.participants, 'Spread over the recorded rooms. Each yields a video and an audio recording.'),
         field('Hold time (s)', videoText.hold, 'How long each participant stays connected.')),
+      h('label', { class: 'check mt-12' }, composeOn, 'Compose each recorded room into one mp4 (Video Compositions)'),
       h('label', { class: 'check mt-12' }, tempKeys, 'Generate temporary API keys (created for the run, deleted after)'),
       keyFields));
 
@@ -431,7 +435,7 @@ const editView = (existing) => {
         videoEnabled: videoOn.checked,
         videoRooms: val('#f-video-rooms').trim(), videoRoomTypes: checked('videoRoomTypes'),
         videoPrefix: val('#f-video-prefix').trim(),
-        videoRecordingsEnabled: recOn.checked, videoRecRooms: val('#f-video-recrooms').trim(),
+        videoRecordingsEnabled: recOn.checked, videoComposeEnabled: composeOn.checked, videoRecRooms: val('#f-video-recrooms').trim(),
         videoParticipants: val('#f-video-participants').trim(), videoHold: val('#f-video-hold').trim(),
         videoTempKeys: tempKeys.checked,
         ...(existing && existing.videoKeyHint ? { videoKeyHint: existing.videoKeyHint } : {}),
