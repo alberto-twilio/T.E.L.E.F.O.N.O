@@ -42,7 +42,7 @@ test('--no-prod-cap is only added on prod, and never implies --confirm-prod', ()
 test('credentials never appear in argv', () => {
   const args = buildWizardArgs(base(), opts).join(' ');
   assert.ok(!/AC[0-9a-f]{32}/i.test(args));
-  assert.deepEqual(envNames('dev'), { sidEnv: 'VOICEGEN_SID_DEV', tokenEnv: 'VOICEGEN_TOKEN_DEV' });
+  assert.deepEqual(envNames('dev'), { sidEnv: 'VOICEGEN_SID_DEV', tokenEnv: 'VOICEGEN_TOKEN_DEV', videoKeyEnv: 'VOICEGEN_VKEY_DEV', videoSecretEnv: 'VOICEGEN_VSECRET_DEV' });
 });
 
 test('validation catches what would crash or misbehave in core.py', () => {
@@ -95,4 +95,29 @@ test('video flags are omitted when video is off; room types omitted when none pi
   const args = buildWizardArgs({ ...base(), videoEnabled: true, ...videoFields(), videoRoomTypes: [] }, opts);
   assert.ok(!args.includes('--video-room-types'));
   assert.match(args[args.indexOf('--categories') + 1], /conferences,video_rooms$/);
+});
+
+test('video recordings: flags, categories and API key env names (never values)', () => {
+  const p = { ...base(), categories: [], videoEnabled: true, ...videoFields(), videoRecordingsEnabled: true, videoTempKeys: false };
+  assert.deepEqual(validateProfile(p), []);
+  const args = buildWizardArgs(p, opts);
+  assert.equal(args[args.indexOf('--categories') + 1], 'video_rooms,video_recordings');
+  assert.equal(args[args.indexOf('--video-recordings') + 1], '2-6');
+  assert.equal(args[args.indexOf('--video-rec-rooms') + 1], '2-3');
+  assert.equal(args[args.indexOf('--video-hold') + 1], '5-15');
+  assert.equal(args[args.indexOf('--video-key-env') + 1], 'VOICEGEN_VKEY_STAGE');
+  assert.equal(args[args.indexOf('--video-secret-env') + 1], 'VOICEGEN_VSECRET_STAGE');
+  const temp = buildWizardArgs({ ...p, videoTempKeys: true }, opts);
+  assert.ok(!temp.includes('--video-key-env'));
+  const recOnly = buildWizardArgs({ ...p, videoRooms: '0', videoTempKeys: true }, opts);
+  assert.equal(recOnly[recOnly.indexOf('--categories') + 1], 'video_recordings');
+});
+
+test('video recordings are validated', () => {
+  const bad = { ...base(), videoEnabled: true, ...videoFields(), videoRecordingsEnabled: true, videoParticipants: '0', videoRecRooms: 'x', videoHold: 'abc' };
+  const msgs = validateProfile(bad).join(' ');
+  assert.match(msgs, /participants/);
+  assert.match(msgs, /recorded rooms/);
+  assert.match(msgs, /hold time/);
+  assert.match(validateProfile({ ...base(), videoEnabled: true, ...videoFields(), videoRooms: '0' }).join(' '), /rooms above 0 or enable recordings/);
 });

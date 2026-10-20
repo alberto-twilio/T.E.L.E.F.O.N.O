@@ -145,3 +145,5 @@ button.wide { width: 100%; }
 
 #profile-list .pick { flex: none; margin: 0; cursor: pointer; }
 #profile-list .pick:disabled { cursor: default; }
+.customize { margin-top: 10px; }
+.customize > summary { cursor: pointer; color: var(--accent); font-size: 13px; user-select: none; }

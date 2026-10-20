@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { buildWizardArgs, envNames } = require('./args');
+const { buildWizardArgs, envNames, needsVideoKey } = require('./args');
 const { createProgress, expectedCounts, percent } = require('./progress');
 
 const summarize = (results) => {
@@ -15,7 +15,9 @@ const summarize = (results) => {
     recordings: count(results.recordings_transcriptions),
     conferences: count(results.conferences),
     videoRooms: count(results.video_rooms),
-    errors: failed(results.calls) + failed(results.recordings_transcriptions) + failed(results.conferences) + failed(results.video_rooms),
+    videoRecordings: count(results.video_recordings),
+    errors: failed(results.calls) + failed(results.recordings_transcriptions) + failed(results.conferences) + failed(results.video_rooms)
+      + failed(results.video_recordings),
   };
 };
 
@@ -23,7 +25,7 @@ const summarize = (results) => {
 // some failed and some worked = partial; every item failed = failed.
 const resolveStatus = (status, summary) => {
   if (status !== 'success' || !summary || summary.errors === 0) return status;
-  const items = summary.calls + summary.recordings + summary.conferences + summary.videoRooms;
+  const items = summary.calls + summary.recordings + summary.conferences + summary.videoRooms + (summary.videoRecordings || 0);
   return summary.errors >= items ? 'failed' : 'partial';
 };
 
@@ -51,7 +53,9 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
     const id = crypto.randomUUID();
     const paths = store.paths(id);
     const args = buildWizardArgs(profile, { wizardPath, resultsPath: paths.results, confirmProd });
-    const { sidEnv, tokenEnv } = envNames(profile.tier);
+    const { sidEnv, tokenEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier);
+    const videoKey = needsVideoKey(profile) ? await keychain.getCredentials(`${profile.id}:videokey`) : null;
+    if (needsVideoKey(profile) && !videoKey) throw new Error('This profile needs a Video API key but none is stored. Edit it and enter one, or use temporary keys.');
 
     const run = {
       id,
@@ -91,7 +95,10 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
     };
 
     const child = spawn(pythonPath, args, {
-      env: { ...process.env, [sidEnv]: creds.sid, [tokenEnv]: creds.token, PYTHONUNBUFFERED: '1' },
+      env: {
+        ...process.env, [sidEnv]: creds.sid, [tokenEnv]: creds.token, PYTHONUNBUFFERED: '1',
+        ...(videoKey ? { [videoKeyEnv]: videoKey.sid, [videoSecretEnv]: videoKey.token } : {}),
+      },
       cwd: require('node:path').dirname(paths.log),
     });
     const entry = { child, stopped: false };

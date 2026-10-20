@@ -186,8 +186,18 @@ not for someone running it.
 - Numbers are only fetched/purchased when a Voice category runs.
 - Progress-format coupling: `[plan] video_rooms=N` and `[video_room i/n]` are
   parsed by `desktop/lib/progress.js`; change both together.
-- Participants/recordings (Playwright) are a later phase, don't bolt them
-  onto this path.
+- `video_recordings` (`gen/video_recordings.py`) is the only code that needs a
+  third-party package (Playwright). It is imported lazily by `wizard.py`
+  (`run_video_recordings_step`) and must never be imported by `gen/core.py` or
+  end up in a standalone script (`--mode save` refuses it). Temporary API keys
+  are created per run and always deleted in a `finally`; key values only travel
+  as env vars named by `--video-key-env/--video-secret-env`, never argv. It is
+  stage/dev only like rooms. Progress format: `[plan] video_recordings=N`
+  (participants) and `[video_rec i/n]`, parsed by `desktop/lib/progress.js`.
+- Desktop profile form: Voice and Video sections show only their checkbox for a
+  new profile (details folded under "Customize"); defaults are random ranges.
+  A user-supplied Video API key lives in the Keychain under account
+  `<profileId>:videokey`; delete it with the profile, never by service name.
 
 ## Defaults
 

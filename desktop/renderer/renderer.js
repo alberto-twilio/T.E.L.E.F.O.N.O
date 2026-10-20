@@ -184,6 +184,8 @@ const profileView = (p) => {
       ? `${p.conferences}${p.regions && p.regions.length ? `  (${p.regions.join(', ')})` : ''}` : 'off'],
     ['Video rooms', p.videoEnabled
       ? `${p.videoRooms}  (${p.videoRoomTypes && p.videoRoomTypes.length ? p.videoRoomTypes.join(', ') : 'group only'}; prefix ${p.videoPrefix})` : 'off'],
+    ['Video recordings', p.videoEnabled && p.videoRecordingsEnabled
+      ? `${p.videoParticipants} participants in ${p.videoRecRooms} rooms, hold ${p.videoHold}s (${p.videoTempKeys === false ? 'own API key' : 'temporary API keys'})` : 'off'],
   ];
   if (p.tier === 'prod') stats.push(['Prod caps', p.noProdCap ? 'lifted (--no-prod-cap)' : '30 per category, 5m per call']);
 
@@ -210,7 +212,7 @@ const profileView = (p) => {
 const runsTable = (runs) =>
   h('div', { class: 'card tight' },
     h('table', {},
-      h('thead', {}, h('tr', {}, ['Started', 'Status', 'Duration', 'Calls', 'Rec.', 'Conf.', 'Rooms', 'Errors'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Started', 'Status', 'Duration', 'Calls', 'Rec.', 'Conf.', 'Rooms', 'Video rec.', 'Errors'].map((t) => h('th', {}, t)))),
       h('tbody', {}, runs.map((r) => {
         const s = r.summary;
         return h('tr', { onClick: () => openRun(r.id) },
@@ -221,6 +223,7 @@ const runsTable = (runs) =>
           countCell(r, 'rec_trans', s && s.recordings),
           countCell(r, 'conf', s && s.conferences),
           countCell(r, 'video_rooms', s && (s.videoRooms || 0)),
+          countCell(r, 'video_recordings', s && (s.videoRecordings || 0)),
           h('td', {}, s ? String(s.errors) : '–'));
       }))));
 
@@ -265,6 +268,9 @@ const editView = (existing) => {
   const V = (k) => (p[k] != null ? p[k] : D[k]);
   const field = (label, input, hint) => h('div', {}, h('label', {}, label), input, hint && h('div', { class: 'hint' }, hint));
   const text = (id, value, type = 'text') => h('input', { type, id, value: value ?? '', autocomplete: 'off', spellcheck: 'false' });
+
+  // detail fields stay folded away unless the profile already exists, so a new profile is two checkboxes and a name
+  const customize = (open, ...children) => h('details', { class: 'customize', open: Boolean(open) }, h('summary', {}, 'Customize'), ...children);
 
   const tier = h('select', { id: 'f-tier' }, state.info.TIERS.map((t) => h('option', { value: t, selected: t === p.tier }, t)));
   const checks = (name, all, chosen, labels = {}) =>
@@ -320,40 +326,81 @@ const editView = (existing) => {
   const voiceSection = h('div', { class: 'section' },
     h('h3', {}, 'Voice'),
     h('label', { class: 'check' }, voiceOn, 'Generate Voice data (calls, recordings, conferences)'),
-    h('div', { class: 'mt-12' }, catBoxes),
-    h('div', { class: 'grid mt-12' },
-      field('Calls', voiceInputs.calls[0], 'Number, min-max range, or 0.'),
-      field('Call duration', voiceInputs.calls[1], 'Range like 1s-3m. Applies to completed calls.'),
-      field('Recordings / transcriptions', voiceInputs.recordings_transcriptions[0]),
-      field('Conferences', voiceInputs.conferences[0])),
-    h('div', { class: 'mt-12' }, h('label', {}, 'Conference regions (optional)'), regionBoxes));
+    h('div', { class: 'hint' }, 'With the defaults every category runs with random counts and durations.'),
+    customize(existing,
+      h('div', { class: 'mt-12' }, catBoxes),
+      h('div', { class: 'grid mt-12' },
+        field('Calls', voiceInputs.calls[0], 'Number, min-max range, or 0.'),
+        field('Call duration', voiceInputs.calls[1], 'Range like 1s-3m. Applies to completed calls.'),
+        field('Recordings / transcriptions', voiceInputs.recordings_transcriptions[0]),
+        field('Conferences', voiceInputs.conferences[0])),
+      h('div', { class: 'mt-12' }, h('label', {}, 'Conference regions (optional)'), regionBoxes)));
 
   const videoOn = h('input', { type: 'checkbox', id: 'f-video-on', checked: Boolean(p.videoEnabled) });
-  const videoRoomsInput = text('f-video-rooms', V('videoRooms'));
-  const videoPrefixInput = text('f-video-prefix', V('videoPrefix'));
+  const recOn = h('input', { type: 'checkbox', id: 'f-video-rec-on', checked: p.videoRecordingsEnabled === true });
+  const tempKeys = h('input', { type: 'checkbox', id: 'f-video-tempkeys', checked: p.videoTempKeys !== false });
+  const videoText = {
+    rooms: text('f-video-rooms', V('videoRooms')),
+    recRooms: text('f-video-recrooms', V('videoRecRooms')),
+    participants: text('f-video-participants', V('videoParticipants')),
+    hold: text('f-video-hold', V('videoHold')),
+    prefix: text('f-video-prefix', V('videoPrefix')),
+    keySid: text('f-video-keysid', ''),
+    keySecret: text('f-video-keysecret', '', 'password'),
+  };
+  videoText.keySid.placeholder = p.videoKeyStored ? `SK…${p.videoKeyHint || ''} (stored)` : 'SKxxxxxxxx…';
+  videoText.keySecret.placeholder = p.videoKeyStored ? '•••••••• (stored; leave blank to keep)' : 'API key secret';
   const videoTypeBoxes = checks('videoRoomTypes', state.info.VIDEO_ROOM_TYPES, p.videoRoomTypes || []);
-  const videoInputs = [videoRoomsInput, videoPrefixInput];
+  const keyFields = h('div', { class: 'grid mt-12' },
+    field('API Key SID', videoText.keySid, 'Stored in the macOS Keychain, never in the profile file.'),
+    field('API Key secret', videoText.keySecret));
   const videoNote = h('div', { class: 'hint', id: 'video-note' });
   const syncVideo = () => {
     const prod = tier.value === 'prod';
     videoOn.disabled = prod;
     if (prod) videoOn.checked = false;
-    for (const i of [...videoInputs, ...videoTypeBoxes.querySelectorAll('input')]) i.disabled = prod || !videoOn.checked;
+    const on = !prod && videoOn.checked;
+    const rec = on && recOn.checked;
+    recOn.disabled = !on;
+    tempKeys.disabled = !rec;
+    for (const i of [videoText.rooms, videoText.prefix, ...videoTypeBoxes.querySelectorAll('input')]) i.disabled = !on;
+    for (const i of [videoText.recRooms, videoText.participants, videoText.hold]) i.disabled = !rec;
+    keyFields.style.display = rec && !tempKeys.checked ? '' : 'none';
+    for (const i of [videoText.keySid, videoText.keySecret]) i.disabled = !(rec && !tempKeys.checked);
     videoNote.textContent = prod
       ? 'Video generation is stage/dev only and is never available on prod.'
-      : 'Creates and completes empty Video rooms through the REST API (no participants or recordings yet). Stage/dev only.';
+      : 'Creates empty rooms, and optionally rooms where participants join a headless browser so Twilio records them (needs Playwright). Stage/dev only.';
   };
   tier.addEventListener('change', syncVideo);
   videoOn.addEventListener('change', syncVideo);
+  recOn.addEventListener('change', () => {
+    syncVideo();
+    if (!recOn.checked) return;
+    showDialog([h('h2', {}, 'Playwright is required'),
+      h('p', {}, 'Video recordings need participants to join the rooms from a headless browser, which uses Playwright. Without it these items fail and the run ends as partial.'),
+      h('p', {}, 'Install it once for the python3 this app uses:'),
+      h('pre', { class: 'log' }, 'pip3 install playwright'),
+      h('p', { class: 'muted small' }, 'It reuses a Chromium already in ~/Library/Caches/ms-playwright; otherwise also run: python3 -m playwright install chromium'),
+      h('div', { class: 'actions' }, h('button', { class: 'primary', onClick: closeDialog }, 'Got it'))]);
+  });
+  tempKeys.addEventListener('change', syncVideo);
   queueMicrotask(syncVideo);
   const videoSection = h('div', { class: 'section' },
     h('h3', {}, 'Video'),
-    h('label', { class: 'check' }, videoOn, 'Generate Video rooms'),
+    h('label', { class: 'check' }, videoOn, 'Generate Video (rooms and recordings)'),
     videoNote,
-    h('div', { class: 'grid mt-12' },
-      field('Rooms', videoRoomsInput, 'Number or min-max range, re-rolled every run.'),
-      field('Room name prefix', videoPrefixInput, 'Rooms are named <prefix>-<stamp>-<n>.')),
-    h('div', { class: 'mt-12' }, h('label', {}, 'Room types (none ticked = group only; legacy types only work on accounts that used Video before Oct 21 2024)'), videoTypeBoxes));
+    customize(existing,
+      h('div', { class: 'grid mt-12' },
+        field('Empty rooms', videoText.rooms, 'Number or min-max range, 0 to skip. Re-rolled every run.'),
+        field('Room name prefix', videoText.prefix, 'Rooms are named <prefix>-<stamp>-<n>.')),
+      h('div', { class: 'mt-12' }, h('label', {}, 'Room types for empty rooms (none ticked = group only; legacy types only work on accounts that used Video before Oct 21 2024)'), videoTypeBoxes),
+      h('label', { class: 'check mt-12' }, recOn, 'Rooms with participants and recordings'),
+      h('div', { class: 'grid mt-12' },
+        field('Recorded rooms', videoText.recRooms),
+        field('Participants', videoText.participants, 'Spread over the recorded rooms. Each yields a video and an audio recording.'),
+        field('Hold time (s)', videoText.hold, 'How long each participant stays connected.')),
+      h('label', { class: 'check mt-12' }, tempKeys, 'Generate temporary API keys (created for the run, deleted after)'),
+      keyFields));
 
   const form = h('div', { class: 'card mt-16' },
     h('div', { class: 'grid' },
@@ -381,7 +428,12 @@ const editView = (existing) => {
         videoEnabled: tier.value !== 'prod' && videoOn.checked,
         videoRooms: val('#f-video-rooms').trim(), videoRoomTypes: checked('videoRoomTypes'),
         videoPrefix: val('#f-video-prefix').trim(),
+        videoRecordingsEnabled: recOn.checked, videoRecRooms: val('#f-video-recrooms').trim(),
+        videoParticipants: val('#f-video-participants').trim(), videoHold: val('#f-video-hold').trim(),
+        videoTempKeys: tempKeys.checked,
+        ...(existing && existing.videoKeyHint ? { videoKeyHint: existing.videoKeyHint } : {}),
       },
+      videoKey: tempKeys.checked ? null : { sid: val('#f-video-keysid').trim(), secret: val('#f-video-keysecret').trim() },
       credentials: { sid: val('#f-sid').trim(), token: val('#f-token').trim() },
     };
   };

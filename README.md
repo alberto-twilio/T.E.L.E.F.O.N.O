@@ -118,6 +118,25 @@ through the list you give; a type the account rejects is recorded as an error an
 refused on prod with no override flag. A Video-only run never touches voice
 numbers (they are only fetched when a Voice category runs).
 
+## Video recordings (stage/dev only, needs Playwright)
+
+`video_recordings` makes participants join real rooms so Twilio produces
+recordings (one video + one audio each). It drives headless Chromium with a
+fake camera/mic and twilio-video.js, so it is the one part that needs a
+package: `pip3 install playwright` (it reuses a Chromium already in
+`~/Library/Caches/ms-playwright`, or run `python3 -m playwright install chromium`).
+Unattended only (`--categories video_recordings`) and never as a standalone script.
+
+```bash
+python3 wizard.py ... --categories video_recordings \
+  --video-recordings 2-6 --video-rec-rooms 2-3 --video-hold 5-15
+```
+
+Participants are spread over the rooms and hold for a random time in
+`--video-hold`. Access tokens need an API Key: by default a temporary one is
+created for the run and deleted after (also on failure); or pass your own with
+`--video-key-env` / `--video-secret-env` (env var NAMES, never values).
+
 `--tier` is required in unattended mode, same reasoning as everywhere
 else: there's no interactive menu to fall back on, so it must be stated
 explicitly. A wrong tier fails cleanly (wrong host for these credentials
