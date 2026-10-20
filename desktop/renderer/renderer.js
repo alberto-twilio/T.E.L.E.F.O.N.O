@@ -269,8 +269,8 @@ const editView = (existing) => {
   const field = (label, input, hint) => h('div', {}, h('label', {}, label), input, hint && h('div', { class: 'hint' }, hint));
   const text = (id, value, type = 'text') => h('input', { type, id, value: value ?? '', autocomplete: 'off', spellcheck: 'false' });
 
-  // detail fields stay folded away unless the profile already exists, so a new profile is two checkboxes and a name
-  const customize = (open, ...children) => h('details', { class: 'customize', open: Boolean(open) }, h('summary', {}, 'Customize'), ...children);
+  // detail fields are always folded away by default (new and existing profiles), so the form stays short
+  const customize = (...children) => h('details', { class: 'customize' }, h('summary', {}, 'Customize'), ...children);
 
   const tier = h('select', { id: 'f-tier' }, state.info.TIERS.map((t) => h('option', { value: t, selected: t === p.tier }, t)));
   const checks = (name, all, chosen, labels = {}) =>
@@ -327,7 +327,7 @@ const editView = (existing) => {
     h('h3', {}, 'Voice'),
     h('label', { class: 'check' }, voiceOn, 'Generate Voice data (calls, recordings, conferences)'),
     h('div', { class: 'hint' }, 'With the defaults every category runs with random counts and durations.'),
-    customize(existing,
+    customize(
       h('div', { class: 'mt-12' }, catBoxes),
       h('div', { class: 'grid mt-12' },
         field('Calls', voiceInputs.calls[0], 'Number, min-max range, or 0.'),
@@ -394,7 +394,7 @@ const editView = (existing) => {
     h('h3', {}, 'Video'),
     h('label', { class: 'check' }, videoOn, 'Generate Video (rooms and recordings)'),
     videoNote,
-    customize(existing,
+    customize(
       h('div', { class: 'grid mt-12' },
         field('Empty rooms', videoText.rooms, 'Number or min-max range, 0 to skip. Re-rolled every run.'),
         field('Room name prefix', videoText.prefix, 'Rooms are named <prefix>-<stamp>-<n>.')),
