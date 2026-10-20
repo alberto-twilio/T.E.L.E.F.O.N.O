@@ -120,6 +120,8 @@ def build_arg_parser():
                     help="Target duration range for completed calls, e.g. '1s-3m', '30s-90s', "
                          "or a bare-seconds range like '10-60'. 0 disables (old passage-based "
                          "variety instead). Default 1s-3m. Each call rolls its own duration.")
+    p.add_argument("--call-mix", dest="call_mix", choices=["default", "completed"], default="default",
+                   help="'completed' makes every call a completed one (no failed/canceled); default keeps the usual mix.")
     p.add_argument("--recordings-transcriptions", dest="recordings_transcriptions", default="5-10")
     p.add_argument("--conferences", default="5-10")
     p.add_argument("--video-rooms", dest="video_rooms", default="5-10",
@@ -260,6 +262,8 @@ def build_plan(args, unattended):
         regions_raw = args.regions
         chosen_regions = [r for r in regions_raw.split(",") if r] if regions_raw else []
         plan["conference_regions"] = chosen_regions or None
+        if args.call_mix == "completed":
+            plan["call_mix"] = "completed"
         plan["video_rooms"] = args.video_rooms if "video_rooms" in categories else "0"
         plan["video_recordings"] = args.video_recordings if "video_recordings" in categories else "0"
     else:
@@ -334,6 +338,8 @@ def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path,
             parts.append(f"--video-key-env {plan['video_key_env']} --video-secret-env {plan['video_secret_env']}")
     if plan.get("call_duration"):
         parts.append(f"--call-duration {plan['call_duration']}")
+    if plan.get("call_mix") == "completed":
+        parts.append("--call-mix completed")
     if plan.get("conference_regions"):
         parts.append(f"--regions {','.join(plan['conference_regions'])}")
     parts.append(f"--mode {mode}")

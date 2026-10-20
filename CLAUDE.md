@@ -84,6 +84,11 @@ not for someone running it.
   `gen/core.py`. Don't change those formats without updating that parser and
   its tests. Every item weighs the same; categories roll their count only
   when they start, so the total is an estimate until each has announced it.
+  **Quick test** (`quickProfile` in `lib/args.js`): one item of one kind (call,
+  recording, conference, video room, video recording, +composition) built as an
+  overridden copy of the profile and run through the normal path, so PROD
+  confirmation, caps and credentials work exactly as for a full run. The call
+  one passes `--call-mix completed`. Never a separate generator.
 
 ## Why the design looks the way it does
 

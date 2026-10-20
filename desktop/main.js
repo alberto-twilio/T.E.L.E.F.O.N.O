@@ -8,7 +8,7 @@ const keychain = require('./lib/keychain');
 const { createRunner } = require('./lib/runner');
 const { describeAccount } = require('./lib/describe');
 const { resolveCredentialIntent } = require('./lib/credintent');
-const { TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, VIDEO_ROOM_TYPES, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
+const { TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, VIDEO_ROOM_TYPES, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
 
 const PYTHON_FALLBACKS = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3'];
 
@@ -59,7 +59,7 @@ const main = async () => {
   }
 
   ipcMain.handle('app:info', () => ({
-    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, VIDEO_ROOM_TYPES, DEFAULTS,
+    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, VIDEO_ROOM_TYPES, QUICK_TESTS, DEFAULTS,
   }));
 
   // credentialsStored lets the UI flag a profile whose Keychain item is gone (deleted in Keychain Access, new Mac, ...)
@@ -155,7 +155,7 @@ const main = async () => {
     log: store.readLog(id),
   }));
 
-  ipcMain.handle('run:start', (_e, { profileId, confirmProd }) => runner.start(profileId, { confirmProd: confirmProd === true }));
+  ipcMain.handle('run:start', (_e, { profileId, confirmProd, quick }) => runner.start(profileId, { confirmProd: confirmProd === true, quick: typeof quick === 'string' ? quick : null }));
   ipcMain.handle('run:stop', (_e, runId) => runner.stop(runId));
 
   win = new BrowserWindow({

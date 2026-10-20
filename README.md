@@ -306,3 +306,7 @@ in this tool.
 - No scheduling is built in on purpose (see the network-reachability note
   above), the standalone script is designed to be cron'd/launchd'd by
   whatever already has access to the target environment.
+
+## Quick test (desktop)
+
+On a profile page, pick a kind next to **Quick test** (call, recording + transcription, conference, video room, video recording, video recording + composition) to generate a single item without running the whole profile. It goes through the same path as a normal run, including the `PROD` confirmation and caps, and leaves the profile unchanged. The CLI equivalent for calls is `--call-mix completed`.

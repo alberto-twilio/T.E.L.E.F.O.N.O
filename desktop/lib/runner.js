@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { buildWizardArgs, envNames, needsVideoKey } = require('./args');
+const { buildWizardArgs, envNames, needsVideoKey, quickProfile, QUICK_TESTS } = require('./args');
 const { createProgress, expectedCounts, percent } = require('./progress');
 
 const summarize = (results) => {
@@ -44,9 +44,11 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
     }
   };
 
-  const launch = async (profileId, { confirmProd = false }) => {
-    const profile = store.getProfile(profileId);
-    if (!profile) throw new Error('Profile not found.');
+  const launch = async (profileId, { confirmProd = false, quick = null }) => {
+    const stored = store.getProfile(profileId);
+    if (!stored) throw new Error('Profile not found.');
+    if (quick && !QUICK_TESTS[quick]) throw new Error('Unknown quick test.');
+    const profile = quick ? quickProfile(stored, quick) : stored;
     if (!pythonPath) throw new Error('python3 was not found on this machine.');
     const creds = await keychain.getCredentials(profile.id);
     if (!creds) throw new Error('No credentials stored for this profile. Edit it and re-enter them.');
@@ -67,6 +69,7 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
       finishedAt: null,
       status: 'running',
       exitCode: null,
+      ...(quick ? { quickTest: quick } : {}),
       spec: {
         categories: profile.categories,
         calls: profile.calls,
