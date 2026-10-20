@@ -27,6 +27,7 @@ import asyncio
 import urllib.error
 import urllib.parse
 import urllib.request
+import signal
 
 from . import core
 
@@ -205,6 +206,10 @@ async def _run(cfg, plan, n_rooms, per_room, holds_spec):
     return entries, rooms_out
 
 
+def _raise_stopped(*_):
+    raise SystemExit("stopped")
+
+
 def run_video_recordings(cfg, plan):
     """cfg: host, video_host, account_sid, auth_header, results_path, key_env/secret_env (names or None).
     Returns {"video_recordings": [...participants], "video_recording_rooms": [...]}."""
@@ -223,6 +228,8 @@ def run_video_recordings(cfg, plan):
                                       "hold_seconds": 0, "joined": False, "error": msg} for i in range(participants)],
                 "video_recording_rooms": []}
 
+    # a stopped run (SIGTERM from the desktop app) must still delete its temporary API key, so turn it into a normal exit
+    signal.signal(signal.SIGTERM, _raise_stopped)
     temp_key = None
     if plan.get("video_key_env"):
         cfg = dict(cfg, key_sid=os.environ.get(plan["video_key_env"], ""), key_secret=os.environ.get(plan["video_secret_env"], ""))

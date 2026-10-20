@@ -32,8 +32,8 @@ const expectedCounts = (profile) => {
     calls: on('calls') ? expectedFromSpec(profile.calls, cap) : 0,
     rec_trans: on('recordings_transcriptions') ? expectedFromSpec(profile.recordingsTranscriptions, cap) : 0,
     conf: on('conferences') ? expectedFromSpec(profile.conferences, cap) : 0,
-    video_rooms: profile.videoEnabled && profile.tier !== 'prod' ? expectedFromSpec(profile.videoRooms) : 0,
-    video_recordings: profile.videoEnabled && profile.videoRecordingsEnabled && profile.tier !== 'prod' ? expectedFromSpec(profile.videoParticipants) : 0,
+    video_rooms: profile.videoEnabled ? expectedFromSpec(profile.videoRooms, cap) : 0,
+    video_recordings: profile.videoEnabled && profile.videoRecordingsEnabled ? expectedFromSpec(profile.videoParticipants, cap) : 0,
   };
 };
 

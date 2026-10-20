@@ -80,14 +80,14 @@ test('a profile needs Voice categories or Video', () => {
   assert.match(validateProfile({ ...base(), categories: [] }).join(' '), /Enable Voice/);
 });
 
-test('video settings are validated only when enabled, and never on prod', () => {
+test('video settings are validated only when enabled', () => {
   const bad = { ...base(), videoEnabled: true, videoRooms: 'x', videoRoomTypes: ['nope'], videoPrefix: 'a b' };
   const msgs = validateProfile(bad).join(' ');
   assert.match(msgs, /Video rooms/);
   assert.match(msgs, /room type/);
   assert.match(msgs, /prefix/);
   assert.deepEqual(validateProfile({ ...bad, videoEnabled: false }), []);
-  assert.match(validateProfile({ ...base(), tier: 'prod', videoEnabled: true, ...videoFields() }).join(' '), /not available on prod/);
+  assert.deepEqual(validateProfile({ ...base(), tier: 'prod', videoEnabled: true, ...videoFields() }), []); // prod is allowed (PROD confirmation + caps apply)
 });
 
 test('video flags are omitted when video is off; room types omitted when none picked', () => {

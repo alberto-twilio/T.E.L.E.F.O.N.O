@@ -59,7 +59,9 @@ test('percent never hits 100 while running, and is 100 once finished', () => {
 test('video rooms count as items and feed the estimate', () => {
   const p = profile({ categories: [], videoEnabled: true, videoRooms: '5-10' });
   assert.equal(expectedCounts(p).video_rooms, 8);
-  assert.equal(expectedCounts({ ...p, tier: 'prod' }).video_rooms, 0);
+  assert.equal(expectedCounts({ ...p, tier: 'prod' }).video_rooms, 8);
+  assert.equal(expectedCounts({ ...p, tier: 'prod', videoRooms: '40-60' }).video_rooms, 30); // prod cap
+  assert.equal(expectedCounts({ ...p, tier: 'prod', videoRooms: '40-60', noProdCap: true }).video_rooms, 50);
   const t = createProgress(expectedCounts(p));
   assert.deepEqual(t.snapshot(), { done: 0, total: 8, estimated: true });
   t.feed('[plan] video_rooms=6\n[video_room 1/6] name=a type=group sid=RM1 completed=True err=\n[video_room 2/6] name=b\n');

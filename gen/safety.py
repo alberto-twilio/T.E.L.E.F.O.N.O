@@ -9,12 +9,6 @@ PROD_HOST = "api.twilio.com"
 PROD_MAX_PER_CATEGORY = 30
 PROD_MAX_CALL_DURATION_SECONDS = 5 * 60
 
-VIDEO_PROD_MESSAGE = ("Video generation (video_rooms) is stage/dev only for now and is never "
-                      "available on prod. There is no flag to override this.")
-
-def video_allowed(host):
-    return not is_prod(host)
-
 def is_prod(host):
     return host == PROD_HOST
 
@@ -22,7 +16,7 @@ def confirm_prod(account_info):
     name = account_info.get("friendly_name", "<unknown>")
     print(f"\n*** This account is PRODUCTION ({name}) ***")
     print("Real calls, real numbers, real cost, real visibility.")
-    print(f"Limit: {PROD_MAX_PER_CATEGORY} per category (calls, recordings/transcriptions, conferences) "
+    print(f"Limit: {PROD_MAX_PER_CATEGORY} per category (calls, recordings/transcriptions, conferences, video rooms, video participants) "
           f"and {PROD_MAX_CALL_DURATION_SECONDS}s per call, unless --no-prod-cap was passed.")
     ans = input("Type PROD in capitals to continue, anything else cancels: ")
     return ans.strip() == "PROD"
@@ -63,7 +57,7 @@ def cap_plan_for_tier(host, plan, skip_cap=False):
                       f"{PROD_MAX_CALL_DURATION_SECONDS}s per call) skipped (--no-prod-cap)"]
     capped = dict(plan)
     notes = []
-    for key in ("calls", "recordings_transcriptions", "conferences"):
+    for key in ("calls", "recordings_transcriptions", "conferences", "video_rooms", "video_recordings", "video_rec_rooms"):
         spec = capped.get(key, "0")
         new_spec, changed = _cap_spec(spec, PROD_MAX_PER_CATEGORY)
         if changed:

@@ -357,9 +357,7 @@ const editView = (existing) => {
   const videoNote = h('div', { class: 'hint', id: 'video-note' });
   const syncVideo = () => {
     const prod = tier.value === 'prod';
-    videoOn.disabled = prod;
-    if (prod) videoOn.checked = false;
-    const on = !prod && videoOn.checked;
+    const on = videoOn.checked;
     const rec = on && recOn.checked;
     recOn.disabled = !on;
     tempKeys.disabled = !rec;
@@ -367,9 +365,8 @@ const editView = (existing) => {
     for (const i of [videoText.recRooms, videoText.participants, videoText.hold]) i.disabled = !rec;
     keyFields.style.display = rec && !tempKeys.checked ? '' : 'none';
     for (const i of [videoText.keySid, videoText.keySecret]) i.disabled = !(rec && !tempKeys.checked);
-    videoNote.textContent = prod
-      ? 'Video generation is stage/dev only and is never available on prod.'
-      : 'Creates empty rooms, and optionally rooms where participants join a headless browser so Twilio records them (needs Playwright). Stage/dev only.';
+    videoNote.textContent = (prod ? 'On prod, each Video category is capped at 30 per run unless the profile lifts the caps, and every run asks for PROD confirmation. ' : '')
+      + 'Creates empty rooms, and optionally rooms where participants join a headless browser so Twilio records them (needs Playwright).';
   };
   tier.addEventListener('change', syncVideo);
   videoOn.addEventListener('change', syncVideo);
@@ -430,7 +427,7 @@ const editView = (existing) => {
         calls: val('#f-calls').trim(), callDuration: val('#f-duration').trim(),
         recordingsTranscriptions: val('#f-rec').trim(), conferences: val('#f-conf').trim(),
         regions: checked('regions'), noProdCap: tier.value === 'prod' && $('#f-nocap').checked,
-        videoEnabled: tier.value !== 'prod' && videoOn.checked,
+        videoEnabled: videoOn.checked,
         videoRooms: val('#f-video-rooms').trim(), videoRoomTypes: checked('videoRoomTypes'),
         videoPrefix: val('#f-video-prefix').trim(),
         videoRecordingsEnabled: recOn.checked, videoRecRooms: val('#f-video-recrooms').trim(),

@@ -43,7 +43,7 @@ from gen import core, discovery, safety
 
 REGIONS = ["us1", "us2", "au1", "br1", "ie1", "jp1", "sg1", "de1", "in1"]
 VOICE_CATEGORIES = ["calls", "recordings_transcriptions", "conferences"]
-# video_rooms is opt-in (never part of the default selection) and stage/dev only, see safety.video_allowed
+# video_rooms / video_recordings are opt-in (never part of the default selection); on prod they go through the same PROD confirmation and caps as everything else
 ALL_CATEGORIES = VOICE_CATEGORIES + ["video_rooms", "video_recordings"]
 # video_recordings drives a headless browser (Playwright, see gen/video_recordings.py): unattended/--categories only
 INTERACTIVE_CATEGORIES = VOICE_CATEGORIES + ["video_rooms"]
@@ -114,7 +114,7 @@ def build_arg_parser():
     p.add_argument("--tier", choices=discovery.TIERS,
                     help="Which environment these credentials belong to. Required in unattended mode, "
                          "asked interactively otherwise. Never guessed.")
-    p.add_argument("--categories", help="Comma list of: " + ",".join(ALL_CATEGORIES) + " (default: the Voice ones; video_rooms is opt-in, stage/dev only)")
+    p.add_argument("--categories", help="Comma list of: " + ",".join(ALL_CATEGORIES) + " (default: the Voice ones; the Video ones are opt-in)")
     p.add_argument("--calls", default="10-30", help="Fixed N, 'min-max', or 0 to skip. Default 10-30.")
     p.add_argument("--call-duration", dest="call_duration", default="1s-3m",
                     help="Target duration range for completed calls, e.g. '1s-3m', '30s-90s', "
@@ -124,14 +124,14 @@ def build_arg_parser():
     p.add_argument("--conferences", default="5-10")
     p.add_argument("--video-rooms", dest="video_rooms", default="5-10",
                    help="Video rooms (REST only, no participants): fixed N, 'min-max', or 0. Default 5-10. "
-                        "Needs video_rooms in --categories. Stage/dev only.")
+                        "Needs video_rooms in --categories.")
     p.add_argument("--video-room-types", dest="video_room_types", default="",
                    help="Comma list of room types to cycle: group,group-small,peer-to-peer (default: all three)")
     p.add_argument("--video-room-prefix", dest="video_room_prefix", default="telefono",
                    help="Room name prefix: letters, digits, - and _ (default telefono)")
     p.add_argument("--video-recordings", dest="video_recordings", default="2-6",
                    help="Participants that join recorded Video rooms (Playwright needed): N, 'min-max' or 0. "
-                        "Default 2-6. Needs video_recordings in --categories. Stage/dev only.")
+                        "Default 2-6. Needs video_recordings in --categories.")
     p.add_argument("--video-rec-rooms", dest="video_rec_rooms", default="2-3",
                    help="Rooms those participants are spread over. Default 2-3.")
     p.add_argument("--video-hold", dest="video_hold", default="5-15",
@@ -238,7 +238,7 @@ def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase):
     return numbers, purchased_any
 
 
-def build_plan(args, unattended, allow_video=False):
+def build_plan(args, unattended):
     """Returns a plan of SPECS (strings), never pre-rolled numbers, see
     gen/core.py for why: rolling must happen at actual execution time so
     the same plan re-rolls fresh on every run, including a saved
@@ -260,7 +260,7 @@ def build_plan(args, unattended, allow_video=False):
         plan["video_rooms"] = args.video_rooms if "video_rooms" in categories else "0"
         plan["video_recordings"] = args.video_recordings if "video_recordings" in categories else "0"
     else:
-        categories = select_multi("Categories", INTERACTIVE_CATEGORIES if allow_video else VOICE_CATEGORIES)
+        categories = select_multi("Categories", INTERACTIVE_CATEGORIES)
         plan = {"calls": "0", "call_duration": None, "recordings_transcriptions": "0",
                  "conferences": "0", "conference_regions": None, "video_rooms": "0", "video_recordings": "0"}
         if "calls" in categories:
@@ -434,10 +434,7 @@ def main():
             if not safety.confirm_prod(info):
                 sys.exit("Cancelled.")
 
-    if unattended and {"video_rooms", "video_recordings"} & set((args.categories or "").split(",")) and not safety.video_allowed(host):
-        sys.exit(safety.VIDEO_PROD_MESSAGE)
-
-    plan = build_plan(args, unattended, allow_video=safety.video_allowed(host))
+    plan = build_plan(args, unattended)
     plan, notes = safety.cap_plan_for_tier(host, plan, skip_cap=args.no_prod_cap)
     for n in notes:
         print(f"NOTE: {n}")
