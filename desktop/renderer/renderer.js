@@ -381,6 +381,11 @@ const editView = (existing) => {
       h('p', {}, 'Install it once for the python3 this app uses:'),
       h('pre', { class: 'log' }, 'pip3 install playwright'),
       h('p', { class: 'muted small' }, 'It reuses a Chromium already in ~/Library/Caches/ms-playwright; otherwise also run: python3 -m playwright install chromium'),
+      h('p', {}, 'The first time you run it, macOS may ask permission for "Electron" (this app) to:'),
+      h('ul', {},
+        h('li', {}, 'Find devices on local networks: choose Allow. Stage and dev servers sit on private VPN addresses, and without it participants may not be able to connect.'),
+        h('li', {}, 'Use the microphone or camera: it uses a fake camera and mic and records nothing from your machine, so either answer is fine.')),
+      h('p', {}, 'You can change them later in System Settings > Privacy & Security.'),
       h('div', { class: 'actions' }, h('button', { class: 'primary', onClick: closeDialog }, 'Got it'))]);
   });
   tempKeys.addEventListener('change', syncVideo);
