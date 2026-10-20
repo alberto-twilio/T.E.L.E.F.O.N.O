@@ -269,8 +269,8 @@ const editView = (existing) => {
   const field = (label, input, hint) => h('div', {}, h('label', {}, label), input, hint && h('div', { class: 'hint' }, hint));
   const text = (id, value, type = 'text') => h('input', { type, id, value: value ?? '', autocomplete: 'off', spellcheck: 'false' });
 
-  // detail fields stay folded away unless the profile already exists, so a new profile is two checkboxes and a name
-  const customize = (open, ...children) => h('details', { class: 'customize', open: Boolean(open) }, h('summary', {}, 'Customize'), ...children);
+  // detail fields are always folded away by default (new and existing profiles), so the form stays short
+  const customize = (...children) => h('details', { class: 'customize' }, h('summary', {}, 'Customize'), ...children);
 
   const tier = h('select', { id: 'f-tier' }, state.info.TIERS.map((t) => h('option', { value: t, selected: t === p.tier }, t)));
   const checks = (name, all, chosen, labels = {}) =>
@@ -327,7 +327,7 @@ const editView = (existing) => {
     h('h3', {}, 'Voice'),
     h('label', { class: 'check' }, voiceOn, 'Generate Voice data (calls, recordings, conferences)'),
     h('div', { class: 'hint' }, 'With the defaults every category runs with random counts and durations.'),
-    customize(existing,
+    customize(
       h('div', { class: 'mt-12' }, catBoxes),
       h('div', { class: 'grid mt-12' },
         field('Calls', voiceInputs.calls[0], 'Number, min-max range, or 0.'),
@@ -376,17 +376,17 @@ const editView = (existing) => {
   recOn.addEventListener('change', () => {
     syncVideo();
     if (!recOn.checked) return;
-    showDialog([h('h2', {}, 'Playwright is required'),
+    showNotice('notice.playwright', 'Playwright is required', [
       h('p', {}, 'Video recordings need participants to join the rooms from a headless browser, which uses Playwright. Without it these items fail and the run ends as partial.'),
       h('p', {}, 'Install it once for the python3 this app uses:'),
       h('pre', { class: 'log' }, 'pip3 install playwright'),
-      h('p', { class: 'muted small' }, 'It reuses a Chromium already in ~/Library/Caches/ms-playwright; otherwise also run: python3 -m playwright install chromium'),
+      h('p', { class: 'muted small' }, 'It reuses a Chromium already in ~/Library/Caches/ms-playwright; otherwise also run: python3 -m playwright install chromium')],
+    () => showNotice('notice.macos-permissions', 'macOS may ask for permissions', [
       h('p', {}, 'The first time you run it, macOS may ask permission for "Electron" (this app) to:'),
       h('ul', {},
         h('li', {}, 'Find devices on local networks: choose Allow. Stage and dev servers sit on private VPN addresses, and without it participants may not be able to connect.'),
         h('li', {}, 'Use the microphone or camera: it uses a fake camera and mic and records nothing from your machine, so either answer is fine.')),
-      h('p', {}, 'You can change them later in System Settings > Privacy & Security.'),
-      h('div', { class: 'actions' }, h('button', { class: 'primary', onClick: closeDialog }, 'Got it'))]);
+      h('p', {}, 'You can change them later in System Settings > Privacy & Security.')]));
   });
   tempKeys.addEventListener('change', syncVideo);
   queueMicrotask(syncVideo);
@@ -394,7 +394,7 @@ const editView = (existing) => {
     h('h3', {}, 'Video'),
     h('label', { class: 'check' }, videoOn, 'Generate Video (rooms and recordings)'),
     videoNote,
-    customize(existing,
+    customize(
       h('div', { class: 'grid mt-12' },
         field('Empty rooms', videoText.rooms, 'Number or min-max range, 0 to skip. Re-rolled every run.'),
         field('Room name prefix', videoText.prefix, 'Rooms are named <prefix>-<stamp>-<n>.')),
@@ -473,6 +473,23 @@ const showDialog = (content) => {
   return d;
 };
 const closeDialog = () => $('#dialog').close();
+
+// An informational popup with a "Don't show this again" box (remembered per notice in localStorage).
+// `then` runs once it closes, however it was closed, so notices can be chained one popup at a time.
+const noticeHidden = (key) => {
+  try { return localStorage.getItem(key) === 'hidden'; } catch (e) { return false; }
+};
+const showNotice = (key, title, body, then) => {
+  if (noticeHidden(key)) { if (then) then(); return; }
+  const dontShow = h('input', { type: 'checkbox', id: 'notice-dont-show' });
+  const d = showDialog([h('h2', {}, title), ...body,
+    h('label', { class: 'check mt-12' }, dontShow, "Don't show this again"),
+    h('div', { class: 'actions' }, h('button', { class: 'primary', onClick: closeDialog }, 'Got it'))]);
+  d.addEventListener('close', () => {
+    if (dontShow.checked) { try { localStorage.setItem(key, 'hidden'); } catch (e) { /* convenience only */ } }
+    if (then) then();
+  }, { once: true });
+};
 
 const checkAccount = async (p, btn) => {
   btn.disabled = true;
