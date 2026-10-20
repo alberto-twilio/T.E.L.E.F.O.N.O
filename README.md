@@ -132,6 +132,8 @@ python3 wizard.py ... --categories video_recordings \
   --video-recordings 2-6 --video-rec-rooms 2-3 --video-hold 5-15
 ```
 
+`--video-compose` (desktop: "Compose each recorded room") then creates one Video Composition per recorded room once its recordings are `completed` (grid layout, mp4, 640x480, all audio sources) and waits up to 5 min for each to finish. Compositions are REST only, billed by Twilio, and follow the same prod rules as the rest of Video (rooms are capped via `--video-rec-rooms`). Needs `video_recordings`; never saved to a standalone script.
+
 Participants are spread over the rooms and hold for a random time in
 `--video-hold`. Access tokens need an API Key: by default a temporary one is
 created for the run and deleted after (also on failure); or pass your own with

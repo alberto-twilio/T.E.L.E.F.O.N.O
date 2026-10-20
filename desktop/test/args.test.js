@@ -121,3 +121,10 @@ test('video recordings are validated', () => {
   assert.match(msgs, /hold time/);
   assert.match(validateProfile({ ...base(), videoEnabled: true, ...videoFields(), videoRooms: '0' }).join(' '), /rooms above 0 or enable recordings/);
 });
+
+test('video compositions: --video-compose only when recordings and compose are both on', () => {
+  const p = { ...base(), categories: [], videoEnabled: true, ...videoFields(), videoRecordingsEnabled: true, videoTempKeys: true };
+  assert.ok(!buildWizardArgs(p, opts).includes('--video-compose'));
+  assert.ok(buildWizardArgs({ ...p, videoComposeEnabled: true }, opts).includes('--video-compose'));
+  assert.ok(!buildWizardArgs({ ...p, videoRecordingsEnabled: false, videoComposeEnabled: true }, opts).includes('--video-compose'));
+});

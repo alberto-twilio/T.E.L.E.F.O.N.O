@@ -149,6 +149,7 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
     if (profile.videoRecordingsEnabled) {
       args.push('--video-recordings', String(profile.videoParticipants).trim(), '--video-rec-rooms', String(profile.videoRecRooms).trim(),
         '--video-hold', String(profile.videoHold).trim());
+      if (profile.videoComposeEnabled) args.push('--video-compose');
       // API key values reach the child only as env vars named here, same as the account credentials
       if (needsVideoKey(profile)) args.push('--video-key-env', videoKeyEnv, '--video-secret-env', videoSecretEnv);
     }

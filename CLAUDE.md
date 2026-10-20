@@ -197,6 +197,9 @@ not for someone running it.
   allowed on prod under the same rules; a SIGTERM (Stop in the app) is turned
   into a normal exit so the temporary key is still deleted. Progress format: `[plan] video_recordings=N`
   (participants) and `[video_rec i/n]`, parsed by `desktop/lib/progress.js`.
+  `--video-compose` adds `compose_rooms` (same module): one composition per room whose
+  recordings all completed, `[plan] video_compositions=N` / `[video_comp i/n]` (also parsed).
+  It is a flag of video_recordings, not a category, so it has no cap of its own.
 - Desktop profile form: Voice and Video sections show only their checkbox for a
   new profile (details folded under "Customize"); defaults are random ranges.
   A user-supplied Video API key lives in the Keychain under account

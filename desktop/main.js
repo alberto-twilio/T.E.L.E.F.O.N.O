@@ -36,7 +36,7 @@ const PROFILE_FIELDS = [
   'id', 'name', 'tier', 'categories', 'calls', 'callDuration',
   'recordingsTranscriptions', 'conferences', 'regions', 'noProdCap',
   'videoEnabled', 'videoRooms', 'videoRoomTypes', 'videoPrefix',
-  'videoRecordingsEnabled', 'videoRecRooms', 'videoParticipants', 'videoHold', 'videoTempKeys', 'videoKeyHint',
+  'videoRecordingsEnabled', 'videoComposeEnabled', 'videoRecRooms', 'videoParticipants', 'videoHold', 'videoTempKeys', 'videoKeyHint',
 ];
 const pickProfile = (p) => Object.fromEntries(PROFILE_FIELDS.filter((k) => k in p).map((k) => [k, p[k]]));
 

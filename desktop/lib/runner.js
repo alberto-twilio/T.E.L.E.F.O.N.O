@@ -16,8 +16,9 @@ const summarize = (results) => {
     conferences: count(results.conferences),
     videoRooms: count(results.video_rooms),
     videoRecordings: count(results.video_recordings),
+    videoCompositions: count(results.video_compositions),
     errors: failed(results.calls) + failed(results.recordings_transcriptions) + failed(results.conferences) + failed(results.video_rooms)
-      + failed(results.video_recordings),
+      + failed(results.video_recordings) + failed(results.video_compositions),
   };
 };
 
@@ -25,7 +26,7 @@ const summarize = (results) => {
 // some failed and some worked = partial; every item failed = failed.
 const resolveStatus = (status, summary) => {
   if (status !== 'success' || !summary || summary.errors === 0) return status;
-  const items = summary.calls + summary.recordings + summary.conferences + summary.videoRooms + (summary.videoRecordings || 0);
+  const items = summary.calls + summary.recordings + summary.conferences + summary.videoRooms + (summary.videoRecordings || 0) + (summary.videoCompositions || 0);
   return summary.errors >= items ? 'failed' : 'partial';
 };
 
