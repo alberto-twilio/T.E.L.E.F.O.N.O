@@ -224,9 +224,10 @@ const quickTestControl = (p) => {
 };
 
 const runsTable = (runs) =>
-  h('div', { class: 'card tight' },
+  h('div', {},
+    h('div', { class: 'card tight' },
     h('table', {},
-      h('thead', {}, h('tr', {}, ['Started', 'Status', 'Duration', 'Calls', 'Rec.', 'Conf.', 'Rooms', 'Video rec.', 'Comp.', 'Errors'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Started', 'Status', 'Duration', 'Calls', 'Rec.', 'Conf.', 'Rooms', 'Video rec.', 'Comp.', 'Errors', 'Actions'].map((t) => h('th', {}, t)))),
       h('tbody', {}, runs.map((r) => {
         const s = r.summary;
         return h('tr', { onClick: () => openRun(r.id) },
@@ -239,8 +240,31 @@ const runsTable = (runs) =>
           countCell(r, 'video_rooms', s && (s.videoRooms || 0)),
           countCell(r, 'video_recordings', s && (s.videoRecordings || 0)),
           countCell(r, 'video_compositions', s && (s.videoCompositions || 0)),
-          h('td', {}, s ? String(s.errors) : '–'));
-      }))));
+          h('td', {}, s ? String(s.errors) : '–'),
+          h('td', {}, r.status === 'running' ? null
+            : h('button', { class: 'small danger', title: 'Delete this run from the history', onClick: (e) => { e.stopPropagation(); confirmDeleteRun(r); } }, 'Delete')));
+      })))),
+    h('div', { class: 'row mt-12' },
+      h('button', { class: 'danger', disabled: runs.every((r) => r.status === 'running'), onClick: () => confirmClearRuns(runs) }, 'Delete all history')));
+
+const confirmDeleteRun = (r) => showDialog([
+  h('h2', {}, 'Delete this run?'),
+  h('p', { class: 'muted' }, `${r.profileName}, started ${fmtTime(r.startedAt)}. Its log and results are removed for good.`),
+  h('div', { class: 'actions' },
+    h('button', { onClick: closeDialog }, 'Cancel'),
+    h('button', { class: 'danger', onClick: async () => { closeDialog(); await api.deleteRuns([r.id]); await reload(); } }, 'Delete'))]);
+
+const confirmClearRuns = (runs) => {
+  const deletable = runs.filter((r) => r.status !== 'running');
+  const skipped = runs.length - deletable.length;
+  showDialog([
+    h('h2', {}, 'Delete the whole history?'),
+    h('p', { class: 'muted' }, `${deletable.length} run${deletable.length === 1 ? '' : 's'} of "${runs[0].profileName}" will be removed, with their logs and results. This cannot be undone.`),
+    skipped ? h('p', { class: 'muted small' }, `${skipped} run${skipped === 1 ? ' is' : 's are'} still running and will be kept.`) : null,
+    h('div', { class: 'actions' },
+      h('button', { onClick: closeDialog }, 'Cancel'),
+      h('button', { class: 'danger', onClick: async () => { closeDialog(); await api.clearRuns(runs[0].profileId); await reload(); } }, 'Delete all'))]);
+};
 
 const runView = () => {
   const run = state.runs.find((r) => r.id === state.viewRunId);

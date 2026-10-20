@@ -155,6 +155,15 @@ const main = async () => {
     log: store.readLog(id),
   }));
 
+  // Runs still executing are never deleted: their log and results are being written.
+  const deletableIds = (ids) => {
+    const active = new Set(runner.activeRunIds());
+    return ids.filter((id) => !active.has(id));
+  };
+  ipcMain.handle('runs:delete', (_e, ids) => store.deleteRuns(deletableIds(Array.isArray(ids) ? ids : [])));
+  ipcMain.handle('runs:clear', (_e, profileId) =>
+    store.deleteRuns(deletableIds(store.listRuns().filter((r) => r.profileId === profileId).map((r) => r.id))));
+
   ipcMain.handle('run:start', (_e, { profileId, confirmProd, quick }) => runner.start(profileId, { confirmProd: confirmProd === true, quick: typeof quick === 'string' ? quick : null }));
   ipcMain.handle('run:stop', (_e, runId) => runner.stop(runId));
 

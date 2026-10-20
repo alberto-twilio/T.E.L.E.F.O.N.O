@@ -66,6 +66,18 @@ const createStore = (dir) => {
     writeJson(runsFile, runs);
   };
 
+  // Removes the given runs (history entry, log and results file). Returns how many were removed.
+  const deleteRuns = (ids) => {
+    const drop = new Set(ids);
+    const runs = listRuns();
+    const keep = runs.filter((r) => !drop.has(r.id));
+    for (const r of runs) {
+      if (drop.has(r.id)) for (const f of Object.values(paths(r.id))) fs.rmSync(f, { force: true });
+    }
+    if (keep.length !== runs.length) writeJson(runsFile, keep);
+    return runs.length - keep.length;
+  };
+
   const readLog = (runId) => {
     try {
       return fs.readFileSync(paths(runId).log, 'utf8');
@@ -78,7 +90,7 @@ const createStore = (dir) => {
 
   return {
     listProfiles, saveProfile, deleteProfile, getProfile,
-    listRuns, saveRun, readLog, readResults, paths,
+    listRuns, saveRun, deleteRuns, readLog, readResults, paths,
   };
 };
 

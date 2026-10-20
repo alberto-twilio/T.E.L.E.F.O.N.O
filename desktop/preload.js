@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('api', {
   duplicateProfile: invoke('profiles:duplicate'),
   listRuns: invoke('runs:list'),
   getRun: invoke('runs:get'),
+  deleteRuns: invoke('runs:delete'),
+  clearRuns: invoke('runs:clear'),
   startRun: invoke('run:start'),
   stopRun: invoke('run:stop'),
   onRunLog: subscribe('run:log'),
