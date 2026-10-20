@@ -194,7 +194,6 @@ const profileView = (p) => {
       h('div', { class: 'row' }, h('h2', {}, p.name), tierBadge(p.tier), kindBadge(p), runningRuns(p.id).length > 0 && h('span', { class: 'running-tag' }, spinner(), `${runningRuns(p.id).length} running`)),
       h('div', { class: 'row' },
         runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
-        quickTestControl(p),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
         h('button', { disabled: !p.credentialsStored || !canRun(), title: p.credentialsStored ? 'Read whether this is a parent or a subaccount' : 'No credentials', onClick: (e) => checkAccount(p, e.currentTarget) }, 'Check account'),
         h('button', { title: `Open the ${p.tier} Twilio console in your browser (log in as this account)`, onClick: () => api.openConsole(p.id) }, 'Open account in 1C'),
@@ -206,19 +205,22 @@ const profileView = (p) => {
     h('div', { class: 'card mt-16' },
       h('div', { class: 'grid' }, stats.map(([k, v, wide]) => h('div', { class: wide ? 'span-all' : '' }, h('div', { class: 'muted small' }, k), h('div', {}, v))))),
     h('p', { class: 'muted small' }, 'Ranges like 10-30 are re-rolled fresh on every run, never frozen.'),
-    h('h3', {}, 'Run history'),
+    h('h3', {}, 'Quick test'),
+    h('p', { class: 'muted small' }, 'Generate a single item to check this profile works, without a full run.'),
+    quickTestControl(p),
+    h('h3', { class: 'mt-16' }, 'Run history'),
     runs.length === 0 ? h('p', { class: 'muted' }, 'No runs yet.') : runsTable(runs));
 };
 
 // One item of one kind, to check a profile works without a full run. Goes through the same prod confirmation.
 const quickKind = { value: 'call' };
 const quickTestControl = (p) => {
-  const select = h('select', { id: 'quick-kind', title: 'What to generate in a quick test (a single item)' },
+  const select = h('select', { id: 'quick-kind', class: 'quick-select', title: 'What to generate in a quick test (a single item)' },
     Object.entries(state.info.QUICK_TESTS).map(([value, label]) => h('option', { value, selected: value === quickKind.value }, label)));
   select.addEventListener('change', () => { quickKind.value = select.value; });
   const ok = canRun() && runnableNow(p);
-  return h('div', { class: 'row gap-6' }, select,
-    h('button', { disabled: !ok, title: 'Generate a single item of the selected kind, ignoring the profile\'s counts', onClick: () => requestRun(p, quickKind.value) }, 'Quick test'));
+  return h('div', { class: 'row gap-6 nowrap' }, select,
+    h('button', { disabled: !ok, title: 'Generate a single item of the selected kind, ignoring the profile\'s counts', onClick: () => requestRun(p, quickKind.value) }, 'Generate'));
 };
 
 const runsTable = (runs) =>
@@ -228,7 +230,7 @@ const runsTable = (runs) =>
       h('tbody', {}, runs.map((r) => {
         const s = r.summary;
         return h('tr', { onClick: () => openRun(r.id) },
-          h('td', {}, fmtTime(r.startedAt), r.quickTest && h('div', { class: 'muted small' }, `Quick test: ${(state.info.QUICK_TESTS[r.quickTest] || r.quickTest).toLowerCase()}`)),
+          h('td', {}, fmtTime(r.startedAt), r.quickTest && h('span', { title: `Quick test: ${(state.info.QUICK_TESTS[r.quickTest] || r.quickTest).toLowerCase()}` }, ' ⚡')),
           h('td', { class: `status-${r.status}` }, r.status === 'running' ? h('span', { class: 'row gap-6' }, spinner(), progressEl(r.id)) : statusLabel(r)),
           h('td', {}, r.status === 'running' ? elapsedEl(r) : fmtDuration(r)),
           countCell(r, 'calls', s && s.calls),
