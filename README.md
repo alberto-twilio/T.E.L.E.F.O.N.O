@@ -38,7 +38,7 @@ discovered automatically:
   `PROD` in capitals to continue. This isn't a flag that can be forgotten,
   it's enforced in code (`gen/safety.py`).
 - **Prod is capped at 30 per category** (calls,
-  recordings/transcriptions, conferences) **and 5m (300s) per call**
+  recordings/transcriptions, conferences, video rooms, video participants) **and 5m (300s) per call**
   (`--call-duration`). The spec itself is clamped (e.g. `10-60` becomes
   `10-30`, `1s-10m` becomes `1-300`), so a saved standalone script stays
   capped on every future run too, and each change is reported as a
@@ -99,7 +99,7 @@ seconds, and `0` disables it in favor of the old passage-based variety.
 Each completed call rolls its own duration independently, not one value
 for the whole batch.
 
-## Video rooms (stage/dev only)
+## Video rooms
 
 `video_rooms` is an opt-in category (never in the default set). It creates
 empty Video rooms through the REST API (`POST /v1/Rooms`) and completes each
@@ -115,10 +115,10 @@ Group rooms are created with `AudioOnly=false` explicitly (stage's account
 default is audio-only, rejected with 53127). Only `group` is used by default: accounts that started using Video after
 2024-10-21 can't create the legacy types (errors 53126/53127). Types cycle
 through the list you give; a type the account rejects is recorded as an error and the run goes on. Video is
-refused on prod with no override flag. A Video-only run never touches voice
+subject to the same prod rules as everything else on prod: `PROD` confirmation and the per-category cap (rooms, participants and recorded rooms count; `--no-prod-cap` lifts it). A Video-only run never touches voice
 numbers (they are only fetched when a Voice category runs).
 
-## Video recordings (stage/dev only, needs Playwright)
+## Video recordings (needs Playwright)
 
 `video_recordings` makes participants join real rooms so Twilio produces
 recordings (one video + one audio each). It drives headless Chromium with a

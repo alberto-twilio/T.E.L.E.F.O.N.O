@@ -180,8 +180,10 @@ not for someone running it.
 
 - `video_rooms` lives in the same wizard/core path (`run_video_rooms` in
   `gen/core.py`), is opt-in, REST-only (create then complete, zero
-  participants) and **blocked on prod** via `safety.video_allowed()`; there is
-  no override flag. Don't add one.
+  participants). On prod it goes through the same unconditional `PROD`
+  confirmation as everything else, and `cap_plan_for_tier` caps `video_rooms`,
+  `video_recordings` (participants) and `video_rec_rooms` at 30 per run
+  (`--no-prod-cap` lifts it, like for voice). Don't add any other bypass.
 - The Video host is derived from the API host (`video_host_for`), not guessed.
 - Numbers are only fetched/purchased when a Voice category runs.
 - Progress-format coupling: `[plan] video_rooms=N` and `[video_room i/n]` are
@@ -192,7 +194,8 @@ not for someone running it.
   end up in a standalone script (`--mode save` refuses it). Temporary API keys
   are created per run and always deleted in a `finally`; key values only travel
   as env vars named by `--video-key-env/--video-secret-env`, never argv. It is
-  stage/dev only like rooms. Progress format: `[plan] video_recordings=N`
+  allowed on prod under the same rules; a SIGTERM (Stop in the app) is turned
+  into a normal exit so the temporary key is still deleted. Progress format: `[plan] video_recordings=N`
   (participants) and `[video_rec i/n]`, parsed by `desktop/lib/progress.js`.
 - Desktop profile form: Voice and Video sections show only their checkbox for a
   new profile (details folded under "Customize"); defaults are random ranges.

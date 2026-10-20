@@ -56,7 +56,6 @@ const HOLD_RE = /^\d+[sm]?-\d+[sm]?$/;
 const positive = (spec) => Number(String(spec).trim().split('-').pop()) >= 1;
 const validateVideo = (p) => {
   const errors = [];
-  if (p.tier === 'prod') errors.push('Video is not available on prod.');
   const roomsErr = validateCount('Video rooms', p.videoRooms);
   if (roomsErr) errors.push(roomsErr);
   if (!roomsErr && !positive(p.videoRooms) && !p.videoRecordingsEnabled) errors.push('Video: set rooms above 0 or enable recordings.');
