@@ -561,7 +561,7 @@ const requestRunAll = () => {
   if (prod.length) {
     input = h('input', { type: 'text', id: 'prod-confirm', autocomplete: 'off', spellcheck: 'false', placeholder: 'PROD' });
     input.addEventListener('input', () => { go.disabled = input.value !== 'PROD'; });
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.disabled) go.click(); });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!go.disabled) go.click(); } });
     content.push(
       h('p', {}, `${prod.length} of these ${prod.length > 1 ? 'are' : 'is'} PRODUCTION: real calls, real numbers, real cost.`),
       h('label', { for: 'prod-confirm' }, 'Type PROD in capitals to continue'),
@@ -607,7 +607,7 @@ const requestRun = (p) => {
   const input = h('input', { type: 'text', id: 'prod-confirm', autocomplete: 'off', spellcheck: 'false', placeholder: 'PROD' });
   const go = h('button', { class: 'primary', disabled: true, onClick: () => { closeDialog(); doRun(p, true); } }, 'Run on production');
   input.addEventListener('input', () => { go.disabled = input.value !== 'PROD'; });
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.disabled) go.click(); });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!go.disabled) go.click(); } });
   showDialog([
     h('h2', {}, `Run "${p.name}" on PRODUCTION?`),
     h('p', {}, 'Real calls, real numbers, real cost, real visibility.'),
