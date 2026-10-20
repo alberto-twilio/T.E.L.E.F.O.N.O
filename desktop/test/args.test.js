@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildWizardArgs, validateProfile, validateCredentials, envNames, DEFAULTS } = require('../lib/args');
+const { buildWizardArgs, quickProfile, QUICK_TESTS, validateProfile, validateCredentials, envNames, DEFAULTS } = require('../lib/args');
 
 const base = () => ({
   name: 'Daily stage', tier: 'stage', categories: ['calls', 'recordings_transcriptions', 'conferences'],
@@ -127,4 +127,42 @@ test('video compositions: --video-compose only when recordings and compose are b
   assert.ok(!buildWizardArgs(p, opts).includes('--video-compose'));
   assert.ok(buildWizardArgs({ ...p, videoComposeEnabled: true }, opts).includes('--video-compose'));
   assert.ok(!buildWizardArgs({ ...p, videoRecordingsEnabled: false, videoComposeEnabled: true }, opts).includes('--video-compose'));
+});
+
+test('quick tests: one item of one kind, every kind valid, stored profile untouched', () => {
+  const p = { ...base(), videoEnabled: true, videoRooms: '5-10', videoRoomTypes: ['group', 'peer-to-peer'], videoPrefix: 'telefono',
+    videoRecordingsEnabled: true, videoRecRooms: '2-3', videoParticipants: '2-6', videoHold: '5-15', videoTempKeys: true };
+  const before = JSON.stringify(p);
+  for (const kind of Object.keys(QUICK_TESTS)) {
+    const q = quickProfile(p, kind);
+    assert.deepEqual(validateProfile(q), [], kind);
+    buildWizardArgs(q, opts); // does not throw
+  }
+  assert.equal(JSON.stringify(p), before);
+
+  const at = (args, flag) => args[args.indexOf(flag) + 1];
+  const call = buildWizardArgs(quickProfile(p, 'call'), opts);
+  assert.equal(at(call, '--categories'), 'calls');
+  assert.equal(at(call, '--calls'), '1');
+  assert.equal(at(call, '--call-mix'), 'completed');
+  assert.ok(!buildWizardArgs(p, opts).includes('--call-mix'));
+
+  const room = buildWizardArgs(quickProfile(p, 'video_room'), opts);
+  assert.equal(at(room, '--categories'), 'video_rooms');
+  assert.equal(at(room, '--video-rooms'), '1');
+  assert.ok(!room.includes('--video-room-types')); // group only
+
+  const rec = buildWizardArgs(quickProfile(p, 'video_recording'), opts);
+  assert.equal(at(rec, '--categories'), 'video_recordings');
+  assert.equal(at(rec, '--video-recordings'), '1');
+  assert.equal(at(rec, '--video-rec-rooms'), '1');
+  assert.ok(!rec.includes('--video-compose'));
+  assert.ok(buildWizardArgs(quickProfile(p, 'video_composition'), opts).includes('--video-compose'));
+  assert.throws(() => quickProfile(p, 'nope'), /Unknown quick test/);
+});
+
+test('quick tests on prod still need the per-run confirmation', () => {
+  const q = quickProfile({ ...base(), tier: 'prod' }, 'call');
+  assert.throws(() => buildWizardArgs(q, opts), /confirmation/);
+  assert.ok(buildWizardArgs(q, { ...opts, confirmProd: true }).includes('--confirm-prod'));
 });

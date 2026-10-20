@@ -194,6 +194,7 @@ const profileView = (p) => {
       h('div', { class: 'row' }, h('h2', {}, p.name), tierBadge(p.tier), kindBadge(p), runningRuns(p.id).length > 0 && h('span', { class: 'running-tag' }, spinner(), `${runningRuns(p.id).length} running`)),
       h('div', { class: 'row' },
         runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
+        quickTestControl(p),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
         h('button', { disabled: !p.credentialsStored || !canRun(), title: p.credentialsStored ? 'Read whether this is a parent or a subaccount' : 'No credentials', onClick: (e) => checkAccount(p, e.currentTarget) }, 'Check account'),
         h('button', { title: `Open the ${p.tier} Twilio console in your browser (log in as this account)`, onClick: () => api.openConsole(p.id) }, 'Open account in 1C'),
@@ -209,6 +210,17 @@ const profileView = (p) => {
     runs.length === 0 ? h('p', { class: 'muted' }, 'No runs yet.') : runsTable(runs));
 };
 
+// One item of one kind, to check a profile works without a full run. Goes through the same prod confirmation.
+const quickKind = { value: 'call' };
+const quickTestControl = (p) => {
+  const select = h('select', { id: 'quick-kind', title: 'What to generate in a quick test (a single item)' },
+    Object.entries(state.info.QUICK_TESTS).map(([value, label]) => h('option', { value, selected: value === quickKind.value }, label)));
+  select.addEventListener('change', () => { quickKind.value = select.value; });
+  const ok = canRun() && runnableNow(p);
+  return h('div', { class: 'row gap-6' }, select,
+    h('button', { disabled: !ok, title: 'Generate a single item of the selected kind, ignoring the profile\'s counts', onClick: () => requestRun(p, quickKind.value) }, 'Quick test'));
+};
+
 const runsTable = (runs) =>
   h('div', { class: 'card tight' },
     h('table', {},
@@ -216,7 +228,7 @@ const runsTable = (runs) =>
       h('tbody', {}, runs.map((r) => {
         const s = r.summary;
         return h('tr', { onClick: () => openRun(r.id) },
-          h('td', {}, fmtTime(r.startedAt)),
+          h('td', {}, fmtTime(r.startedAt), r.quickTest && h('div', { class: 'muted small' }, `Quick test: ${(state.info.QUICK_TESTS[r.quickTest] || r.quickTest).toLowerCase()}`)),
           h('td', { class: `status-${r.status}` }, r.status === 'running' ? h('span', { class: 'row gap-6' }, spinner(), progressEl(r.id)) : statusLabel(r)),
           h('td', {}, r.status === 'running' ? elapsedEl(r) : fmtDuration(r)),
           countCell(r, 'calls', s && s.calls),
@@ -602,14 +614,14 @@ const confirmDelete = (p) => {
 
 // Prod needs PROD typed on every run, mirroring gen/safety.confirm_prod. The
 // check is repeated by wizard.py, which refuses to run prod without --confirm-prod.
-const requestRun = (p) => {
-  if (p.tier !== 'prod') return doRun(p, false);
+const requestRun = (p, quick = null) => {
+  if (p.tier !== 'prod') return doRun(p, false, quick);
   const input = h('input', { type: 'text', id: 'prod-confirm', autocomplete: 'off', spellcheck: 'false', placeholder: 'PROD' });
-  const go = h('button', { class: 'primary', disabled: true, onClick: () => { closeDialog(); doRun(p, true); } }, 'Run on production');
+  const go = h('button', { class: 'primary', disabled: true, onClick: () => { closeDialog(); doRun(p, true, quick); } }, 'Run on production');
   input.addEventListener('input', () => { go.disabled = input.value !== 'PROD'; });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!go.disabled) go.click(); } });
   showDialog([
-    h('h2', {}, `Run "${p.name}" on PRODUCTION?`),
+    h('h2', {}, `${quick ? `Quick test (${state.info.QUICK_TESTS[quick].toLowerCase()}) of` : 'Run'} "${p.name}" on PRODUCTION?`),
     h('p', {}, 'Real calls, real numbers, real cost, real visibility.'),
     h('p', { class: 'muted small' }, p.noProdCap ? 'Prod caps are lifted for this profile.' : 'Capped at 30 per category and 5m per call.'),
     h('label', { for: 'prod-confirm' }, 'Type PROD in capitals to continue'),
@@ -619,11 +631,11 @@ const requestRun = (p) => {
   input.focus();
 };
 
-const doRun = async (p, confirmProd) => {
+const doRun = async (p, confirmProd, quick = null) => {
   try {
     // stay on the profile page: the spinner shows it's running, and runs can be
     // started in parallel. Click a history row to follow the log.
-    await api.startRun({ profileId: p.id, confirmProd });
+    await api.startRun({ profileId: p.id, confirmProd, quick });
     await reload(false);
     selectProfile(p.id);
   } catch (e) {

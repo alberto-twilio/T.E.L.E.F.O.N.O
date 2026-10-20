@@ -346,7 +346,9 @@ def run_batch(ctx, plan):
     "0"/0/absent/None = skip category."""
     results = {"planned": plan}
     if spec_enabled(plan.get("calls")):
-        results["calls"] = run_calls(ctx, plan["calls"], duration_spec=plan.get("call_duration"))
+        # "completed" = every call is a completed one (quick tests); unset keeps the default completed/failed/canceled mix
+        weights = (1, 0, 0) if plan.get("call_mix") == "completed" else (0.55, 0.25, 0.20)
+        results["calls"] = run_calls(ctx, plan["calls"], weights=weights, duration_spec=plan.get("call_duration"))
     else:
         results["calls"] = []
     if spec_enabled(plan.get("recordings_transcriptions")):

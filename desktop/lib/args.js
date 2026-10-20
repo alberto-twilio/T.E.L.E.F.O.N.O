@@ -121,6 +121,32 @@ const categoriesFor = (p) => [
   ...(p.videoEnabled && p.videoRecordingsEnabled ? ['video_recordings'] : []),
 ];
 
+// Quick tests: one item of one kind, run through the normal path (same prod confirmation, caps and
+// credentials). The stored profile is untouched; only this run's copy is overridden.
+const QUICK_TESTS = {
+  call: 'Call',
+  recording: 'Recording + transcription',
+  conference: 'Conference',
+  video_room: 'Video room',
+  video_recording: 'Video recording',
+  video_composition: 'Video recording + composition',
+};
+const VOICE_OFF = { categories: [], calls: '0', recordingsTranscriptions: '0', conferences: '0' };
+const VIDEO_OFF = { videoEnabled: false, videoRecordingsEnabled: false, videoComposeEnabled: false };
+const quickProfile = (profile, kind) => {
+  const base = { ...profile, ...VOICE_OFF, ...VIDEO_OFF, quickTest: kind };
+  switch (kind) {
+    case 'call': return { ...base, categories: ['calls'], calls: '1', callDuration: '10-20', callMix: 'completed' };
+    case 'recording': return { ...base, categories: ['recordings_transcriptions'], recordingsTranscriptions: '1' };
+    case 'conference': return { ...base, categories: ['conferences'], conferences: '1' };
+    case 'video_room': return { ...base, videoEnabled: true, videoRooms: '1', videoRoomTypes: [] };
+    case 'video_recording': case 'video_composition':
+      return { ...base, videoEnabled: true, videoRooms: '0', videoRoomTypes: [], videoRecordingsEnabled: true,
+        videoRecRooms: '1', videoParticipants: '1', videoHold: '5-8', videoComposeEnabled: kind === 'video_composition' };
+    default: throw new Error('Unknown quick test.');
+  }
+};
+
 // opts: { wizardPath, resultsPath, confirmProd }
 // Credential VALUES are never part of argv, only the names of the env vars the
 // runner will set on the child process.
@@ -137,6 +163,7 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
     '--categories', categoriesFor(profile).join(','),
     '--calls', String(profile.calls).trim(),
     '--call-duration', String(profile.callDuration).trim(),
+    ...(profile.callMix === 'completed' ? ['--call-mix', 'completed'] : []),
     '--recordings-transcriptions', String(profile.recordingsTranscriptions).trim(),
     '--conferences', String(profile.conferences).trim(),
     '--mode', 'run',
@@ -169,5 +196,5 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
 
 module.exports = {
   TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, VIDEO_ROOM_TYPES, DEFAULTS,
-  validateProfile, validateCredentials, envNames, needsVideoKey, categoriesFor, buildWizardArgs,
+  QUICK_TESTS, quickProfile, validateProfile, validateCredentials, envNames, needsVideoKey, categoriesFor, buildWizardArgs,
 };
