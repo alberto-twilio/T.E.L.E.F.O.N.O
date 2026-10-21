@@ -184,11 +184,17 @@ const accountSid = (p) => {
   return el;
 };
 
+// Link next to the Account SID that opens this account's page in the console
+const consoleLink = (p) => h('a', {
+  href: '#', class: 'ext-link', title: `Open this account in the ${p.tier} Twilio console`,
+  onClick: (e) => { e.preventDefault(); api.openConsole(p.id); },
+}, 'Open in 1C', externalIcon());
+
 const profileView = (p) => {
   const runs = state.runs.filter((r) => r.profileId === p.id);
   const recs = p.videoEnabled && p.videoRecordingsEnabled;
   const groups = [
-    { items: [['Account SID', accountSid(p), true], ['Environment', tierBadge(p.tier)]] },
+    { items: [['Account SID', h('div', { class: 'row' }, accountSid(p), consoleLink(p)), true], ['Environment', tierBadge(p.tier)]] },
     { title: 'Voice', items: [
       ['Calls', p.categories.includes('calls') ? `${p.calls}  (duration ${p.callDuration})` : 'off'],
       ['Recordings / transcriptions', p.categories.includes('recordings_transcriptions') ? p.recordingsTranscriptions : 'off'],
@@ -210,7 +216,6 @@ const profileView = (p) => {
         runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
         h('button', { disabled: !p.credentialsStored || !canRun(), title: p.credentialsStored ? 'Read whether this is a parent or a subaccount' : 'No credentials', onClick: (e) => checkAccount(p, e.currentTarget) }, 'Check account'),
-        h('button', { title: `Open the ${p.tier} Twilio console in your browser (log in as this account)`, onClick: () => api.openConsole(p.id) }, 'Open in 1C', externalIcon()),
         h('button', { onClick: () => confirmDuplicate(p) }, 'Duplicate'),
         h('button', { class: 'danger', onClick: () => confirmDelete(p) }, 'Delete'))),
     p.credentialsStored ? null : h('div', { class: 'callout mt-14' },

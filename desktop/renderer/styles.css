@@ -139,7 +139,9 @@ tbody tr:last-child td { border-bottom: none; }
 .grid .span-all { grid-column: 1 / -1; }
 
 .sidebar-foot { padding: 12px 14px 14px; border-top: 1px solid var(--line); }
-button .ext-icon { margin-left: 6px; vertical-align: -1px; }
+a.ext-link { color: var(--info); font-size: 12px; text-decoration: none; white-space: nowrap; }
+a.ext-link:hover { text-decoration: underline; }
+.ext-icon { margin-left: 4px; vertical-align: -1px; }
 button.wide { width: 100%; }
 #env-note:empty { display: none; }
 #env-note { border-top: none; padding: 0 14px 12px; }
