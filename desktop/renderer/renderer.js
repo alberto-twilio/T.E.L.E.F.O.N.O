@@ -197,9 +197,8 @@ const profileView = (p) => {
     ] },
     { title: 'Video', items: [
       ['Rooms', p.videoEnabled ? p.videoRooms : 'off'],
-      ['Recordings', recs
-        ? [`Participants: ${p.videoParticipants}`, `Rooms: ${p.videoRecRooms}`, `Hold: ${p.videoHold}s`].map((line) => h('div', {}, line)) : 'off'],
       ['Compositions', recs ? (p.videoComposeEnabled ? 'yes' : 'no') : 'off'],
+      ['Recordings', recs ? `Participants ${p.videoParticipants}  ·  Rooms ${p.videoRecRooms}  ·  Hold ${p.videoHold}s` : 'off', true],
     ] },
   ];
   if (p.tier === 'prod') groups.push({ items: [['Prod caps', p.noProdCap ? 'lifted (--no-prod-cap)' : '30 per category, 5m per call']] });
