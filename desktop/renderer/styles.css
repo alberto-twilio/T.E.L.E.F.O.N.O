@@ -150,3 +150,5 @@ button.wide { width: 100%; }
 #profile-list .pick:disabled { cursor: default; }
 .customize { margin-top: 10px; }
 .customize > summary { cursor: pointer; color: var(--info); font-size: 13px; user-select: none; }
+.summary-group { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 4px; }
+.summary-title { margin: 12px 0 10px; }

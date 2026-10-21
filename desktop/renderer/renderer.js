@@ -186,19 +186,23 @@ const accountSid = (p) => {
 
 const profileView = (p) => {
   const runs = state.runs.filter((r) => r.profileId === p.id);
-  const stats = [
-    ['Account SID', accountSid(p), true],
-    ['Environment', tierBadge(p.tier)],
-    ['Calls', p.categories.includes('calls') ? `${p.calls}  (duration ${p.callDuration})` : 'off'],
-    ['Recordings / transcriptions', p.categories.includes('recordings_transcriptions') ? p.recordingsTranscriptions : 'off'],
-    ['Conferences', p.categories.includes('conferences')
-      ? `${p.conferences}${p.regions && p.regions.length ? `  (${p.regions.join(', ')})` : ''}` : 'off'],
-    ['Video rooms', p.videoEnabled
-      ? `${p.videoRooms}  (${p.videoRoomTypes && p.videoRoomTypes.length ? p.videoRoomTypes.join(', ') : 'group only'}; prefix ${p.videoPrefix})` : 'off'],
-    ['Video recordings', p.videoEnabled && p.videoRecordingsEnabled
-      ? `${p.videoParticipants} participants in ${p.videoRecRooms} rooms, hold ${p.videoHold}s (${p.videoTempKeys === false ? 'own API key' : 'temporary API keys'})${p.videoComposeEnabled ? ', composed to mp4' : ''}` : 'off'],
+  const recs = p.videoEnabled && p.videoRecordingsEnabled;
+  const groups = [
+    { items: [['Account SID', accountSid(p), true], ['Environment', tierBadge(p.tier)]] },
+    { title: 'Voice', items: [
+      ['Calls', p.categories.includes('calls') ? `${p.calls}  (duration ${p.callDuration})` : 'off'],
+      ['Recordings / transcriptions', p.categories.includes('recordings_transcriptions') ? p.recordingsTranscriptions : 'off'],
+      ['Conferences', p.categories.includes('conferences')
+        ? `${p.conferences}${p.regions && p.regions.length ? `  (${p.regions.join(', ')})` : ''}` : 'off'],
+    ] },
+    { title: 'Video', items: [
+      ['Rooms', p.videoEnabled
+        ? `${p.videoRooms}  (${p.videoRoomTypes && p.videoRoomTypes.length ? p.videoRoomTypes.join(', ') : 'group only'}; prefix ${p.videoPrefix})` : 'off'],
+      ['Recordings', recs ? `${p.videoParticipants} participants in ${p.videoRecRooms} rooms, hold ${p.videoHold}s` : 'off'],
+      ['Compositions', recs ? (p.videoComposeEnabled ? 'yes' : 'no') : 'off'],
+    ] },
   ];
-  if (p.tier === 'prod') stats.push(['Prod caps', p.noProdCap ? 'lifted (--no-prod-cap)' : '30 per category, 5m per call']);
+  if (p.tier === 'prod') groups.push({ items: [['Prod caps', p.noProdCap ? 'lifted (--no-prod-cap)' : '30 per category, 5m per call']] });
 
   return h('div', {},
     h('div', { class: 'row spread' },
@@ -214,7 +218,9 @@ const profileView = (p) => {
       'The Account SID and Auth Token for this profile are not in the Keychain, so it cannot run. ',
       h('a', { href: '#', onClick: (e) => { e.preventDefault(); startEdit(p); } }, 'Edit the profile and enter them again.')),
     h('div', { class: 'card mt-16' },
-      h('div', { class: 'grid' }, stats.map(([k, v, wide]) => h('div', { class: wide ? 'span-all' : '' }, h('div', { class: 'muted small' }, k), h('div', {}, v))))),
+      groups.map((g, i) => h('div', { class: i ? 'summary-group' : '' },
+        g.title && h('h3', { class: 'summary-title' }, g.title),
+        h('div', { class: 'grid' }, g.items.map(([k, v, wide]) => h('div', { class: wide ? 'span-all' : '' }, h('div', { class: 'muted small' }, k), h('div', {}, v))))))),
     h('p', { class: 'muted small' }, 'Ranges like 10-30 are re-rolled fresh on every run, never frozen.'),
     h('h3', {}, 'Quick test'),
     h('p', { class: 'muted small' }, 'Generate a single item to check this profile works, without a full run.'),
