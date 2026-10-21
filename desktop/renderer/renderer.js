@@ -196,8 +196,7 @@ const profileView = (p) => {
         ? `${p.conferences}${p.regions && p.regions.length ? `  (${p.regions.join(', ')})` : ''}` : 'off'],
     ] },
     { title: 'Video', items: [
-      ['Rooms', p.videoEnabled
-        ? `${p.videoRooms}  (${p.videoRoomTypes && p.videoRoomTypes.length ? p.videoRoomTypes.join(', ') : 'group only'}; prefix ${p.videoPrefix})` : 'off'],
+      ['Rooms', p.videoEnabled ? p.videoRooms : 'off'],
       ['Recordings', recs ? `${p.videoParticipants} participants in ${p.videoRecRooms} rooms, hold ${p.videoHold}s` : 'off'],
       ['Compositions', recs ? (p.videoComposeEnabled ? 'yes' : 'no') : 'off'],
     ] },
