@@ -125,6 +125,7 @@ input:disabled { opacity: .5; }
 .mt-12 { margin-top: 14px; } .mt-14 { margin-top: 18px; } .mt-16 { margin-top: 20px; }
 .gap-6 { gap: 6px; }
 .nowrap { flex-wrap: nowrap; }
+.no-break { white-space: nowrap; }
 .card.tight { padding: 6px 12px; overflow-x: auto; } /* a wide table scrolls inside its card, not the page */
 .progress-block { margin: 6px 0 12px; }
 
