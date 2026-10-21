@@ -171,7 +171,7 @@ const main = async () => {
   ipcMain.handle('run:stop', (_e, runId) => runner.stop(runId));
 
   win = new BrowserWindow({
-    width: 1100,
+    width: 1360,
     height: 760,
     minWidth: 820,
     minHeight: 560,
