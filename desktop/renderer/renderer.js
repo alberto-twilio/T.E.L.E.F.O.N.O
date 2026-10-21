@@ -197,7 +197,8 @@ const profileView = (p) => {
     ] },
     { title: 'Video', items: [
       ['Rooms', p.videoEnabled ? p.videoRooms : 'off'],
-      ['Recordings', recs ? `${p.videoParticipants} participants in ${p.videoRecRooms} rooms, hold ${p.videoHold}s` : 'off'],
+      ['Recordings', recs
+        ? [`Participants: ${p.videoParticipants}`, `Rooms: ${p.videoRecRooms}`, `Hold: ${p.videoHold}s`].map((line) => h('div', {}, line)) : 'off'],
       ['Compositions', recs ? (p.videoComposeEnabled ? 'yes' : 'no') : 'off'],
     ] },
   ];
