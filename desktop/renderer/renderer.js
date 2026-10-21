@@ -247,7 +247,7 @@ const runsTable = (runs) =>
       h('tbody', {}, runs.map((r) => {
         const s = r.summary;
         return h('tr', { onClick: () => openRun(r.id) },
-          h('td', { class: 'no-break' }, fmtTime(r.startedAt), r.quickTest && h('span', { title: `Quick test: ${(state.info.QUICK_TESTS[r.quickTest] || r.quickTest).toLowerCase()}` }, ' ⚡')),
+          h('td', {}, fmtTime(r.startedAt), r.quickTest && h('span', { title: `Quick test: ${(state.info.QUICK_TESTS[r.quickTest] || r.quickTest).toLowerCase()}` }, ' ⚡')),
           h('td', { class: `status-${r.status}` }, r.status === 'running' ? h('span', { class: 'row gap-6' }, spinner(), progressEl(r.id)) : statusLabel(r)),
           h('td', {}, r.status === 'running' ? elapsedEl(r) : fmtDuration(r)),
           countCell(r, 'calls', s && s.calls),
