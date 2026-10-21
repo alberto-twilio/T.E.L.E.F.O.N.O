@@ -15,6 +15,11 @@ const CONSOLE_URLS = {
   stage: 'https://console.stage.twilio.com/',
   dev: 'https://console.dev.twilio.com/',
 };
+// Deep link to one account's page in the console; the SID must look like an Account SID.
+const consoleUrl = (tier, sid) => {
+  const base = CONSOLE_URLS[tier];
+  return base && /^AC[0-9a-f]{32}$/i.test(sid || '') ? `${base}account/${sid}` : base;
+};
 const REGIONS = ['us1', 'us2', 'au1', 'br1', 'ie1', 'jp1', 'sg1', 'de1', 'in1'];
 
 const DEFAULTS = {
@@ -195,6 +200,6 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
 };
 
 module.exports = {
-  TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, VIDEO_ROOM_TYPES, DEFAULTS,
+  TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, consoleUrl, VIDEO_ROOM_TYPES, DEFAULTS,
   QUICK_TESTS, quickProfile, validateProfile, validateCredentials, envNames, needsVideoKey, categoriesFor, buildWizardArgs,
 };

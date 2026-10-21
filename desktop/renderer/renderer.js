@@ -25,6 +25,17 @@ const h = (tag, props = {}, ...children) => {
   return el;
 };
 
+// "opens in your browser" icon (box with an arrow out of its corner); built with createElementNS because h() makes HTML elements
+const externalIcon = () => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  for (const [k, v] of Object.entries({ viewBox: '0 0 16 16', width: '12', height: '12', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', class: 'ext-icon' })) svg.setAttribute(k, v);
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', 'M9 2h5v5M14 2L7.5 8.5M12 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3.5');
+  svg.append(path);
+  return svg;
+};
+
 // 'partial' = the run finished but some items errored; say how many
 const statusLabel = (r) => (r.status === 'partial' && r.summary ? `partial (${r.summary.errors} error${r.summary.errors === 1 ? '' : 's'})` : r.status);
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '');
@@ -196,7 +207,7 @@ const profileView = (p) => {
         runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
         h('button', { disabled: !p.credentialsStored || !canRun(), title: p.credentialsStored ? 'Read whether this is a parent or a subaccount' : 'No credentials', onClick: (e) => checkAccount(p, e.currentTarget) }, 'Check account'),
-        h('button', { title: `Open the ${p.tier} Twilio console in your browser (log in as this account)`, onClick: () => api.openConsole(p.id) }, 'Open in 1C'),
+        h('button', { title: `Open the ${p.tier} Twilio console in your browser (log in as this account)`, onClick: () => api.openConsole(p.id) }, 'Open in 1C', externalIcon()),
         h('button', { onClick: () => confirmDuplicate(p) }, 'Duplicate'),
         h('button', { class: 'danger', onClick: () => confirmDelete(p) }, 'Delete'))),
     p.credentialsStored ? null : h('div', { class: 'callout mt-14' },
