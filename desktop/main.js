@@ -8,7 +8,7 @@ const keychain = require('./lib/keychain');
 const { createRunner } = require('./lib/runner');
 const { describeAccount } = require('./lib/describe');
 const { resolveCredentialIntent } = require('./lib/credintent');
-const { TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, VIDEO_ROOM_TYPES, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
+const { TIERS, CATEGORIES, REGIONS, consoleUrl, VIDEO_ROOM_TYPES, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
 
 const PYTHON_FALLBACKS = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3'];
 
@@ -112,9 +112,12 @@ const main = async () => {
   });
 
   // Re-reads parent/subaccount for an existing profile with its stored credentials (read-only lookup via wizard.py).
-  ipcMain.handle('profiles:console', (_e, id) => {
+  // Opens the account's page in the console; falls back to the console home if the SID is not readable.
+  ipcMain.handle('profiles:console', async (_e, id) => {
     const profile = store.getProfile(id);
-    const url = profile && CONSOLE_URLS[profile.tier];
+    if (!profile) return false;
+    const creds = await keychain.getCredentials(id);
+    const url = consoleUrl(profile.tier, creds && creds.sid && creds.sid.trim());
     if (!url) return false;
     shell.openExternal(url);
     return true;

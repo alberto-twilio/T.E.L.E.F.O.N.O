@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildWizardArgs, quickProfile, QUICK_TESTS, validateProfile, validateCredentials, envNames, DEFAULTS } = require('../lib/args');
+const { buildWizardArgs, quickProfile, QUICK_TESTS, validateProfile, validateCredentials, consoleUrl, envNames, DEFAULTS } = require('../lib/args');
 
 const base = () => ({
   name: 'Daily stage', tier: 'stage', categories: ['calls', 'recordings_transcriptions', 'conferences'],
@@ -165,4 +165,13 @@ test('quick tests on prod still need the per-run confirmation', () => {
   const q = quickProfile({ ...base(), tier: 'prod' }, 'call');
   assert.throws(() => buildWizardArgs(q, opts), /confirmation/);
   assert.ok(buildWizardArgs(q, { ...opts, confirmProd: true }).includes('--confirm-prod'));
+});
+
+test('console link points at the account page for the right environment', () => {
+  const sid = 'AC' + 'a'.repeat(32);
+  assert.equal(consoleUrl('prod', sid), `https://console.twilio.com/account/${sid}`);
+  assert.equal(consoleUrl('stage', sid), `https://console.stage.twilio.com/account/${sid}`);
+  assert.equal(consoleUrl('prod', 'nope'), 'https://console.twilio.com/'); // unreadable/odd SID: console home, never a malformed path
+  assert.equal(consoleUrl('prod', undefined), 'https://console.twilio.com/');
+  assert.equal(consoleUrl('mars', sid), undefined);
 });
