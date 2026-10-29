@@ -163,20 +163,27 @@ def build_arg_parser():
                     help=f"Skip the prod caps ({safety.PROD_MAX_PER_CATEGORY} per category, "
                          f"{safety.PROD_MAX_CALL_DURATION_SECONDS}s per call). "
                          "The PROD confirmation (or --confirm-prod) is still required.")
+    p.add_argument("--key-env", dest="key_env",
+                    help="Env var NAME holding a Main API Key SID (SK...). With it, --token-env holds that key's "
+                         "secret instead of the Auth Token, and requests authenticate as the key. A Main key is "
+                         "needed for the account lookup and for temporary Video keys; --sid-env stays the Account SID.")
     p.add_argument("--allow-purchase", action="store_true",
                     help="Required if fewer than 2 usable numbers exist and a purchase would be needed.")
     return p
 
 
 def resolve_credentials(args):
-    """Returns (account_sid, auth_token, unattended: bool, tier_or_None)."""
+    """Returns (account_sid, auth_token, unattended: bool, tier_or_None, key_sid_or_None)."""
     if args.sid_env:
         if not args.token_env:
             sys.exit("--token-env is required when --sid-env is passed.")
         try:
-            return os.environ[args.sid_env], os.environ[args.token_env], True, None
+            key_sid = os.environ[args.key_env] if args.key_env else None
+            return os.environ[args.sid_env], os.environ[args.token_env], True, None, key_sid
         except KeyError as e:
             sys.exit(f"Env var {e} is not set.")
+    if args.key_env:
+        sys.exit("--key-env needs --sid-env and --token-env (unattended mode).")
 
     print("=== Twilio Voice test-data wizard ===\n")
 
@@ -185,7 +192,7 @@ def resolve_credentials(args):
         sid, token, tier = from_env
         print(f"Using {discovery.DATAGEN_SID_VAR} / {discovery.DATAGEN_TOKEN_VAR} / "
               f"{discovery.DATAGEN_TIER_VAR} from the environment (tier={tier}).")
-        return sid, token, False, tier
+        return sid, token, False, tier, None
 
     print(f"{discovery.DATAGEN_SID_VAR} / {discovery.DATAGEN_TOKEN_VAR} / "
           f"{discovery.DATAGEN_TIER_VAR} are not set.\n")
@@ -194,12 +201,12 @@ def resolve_credentials(args):
     print()
     account_sid = ask("Account SID")
     auth_token = getpass.getpass("Auth Token (input hidden): ")
-    return account_sid, auth_token, False, None
+    return account_sid, auth_token, False, None, None
 
 
-def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase):
+def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase, key_sid=None):
     print("\nChecking for voice-capable numbers...")
-    numbers = discovery.list_voice_numbers(host, account_sid, auth_token)
+    numbers = discovery.list_voice_numbers(host, account_sid, auth_token, key_sid)
     print(f"Found {len(numbers)} voice-capable number(s).")
     purchased_any = False
 
@@ -207,7 +214,7 @@ def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase):
         return numbers, purchased_any
 
     print("\nFewer than 2 usable numbers. Checking whether this account can even purchase one...")
-    status = discovery.check_compliance_profile(host, account_sid, auth_token)
+    status = discovery.check_compliance_profile(host, account_sid, auth_token, key_sid)
     print(f"Compliance profile status: {status}")
     if status == "no_profile" or status.startswith("not_approved"):
         sys.exit(
@@ -218,7 +225,7 @@ def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase):
         )
 
     needed = 2 - len(numbers)
-    candidates = discovery.search_available_numbers(host, account_sid, auth_token, count=needed + 2)
+    candidates = discovery.search_available_numbers(host, account_sid, auth_token, count=needed + 2, key_sid=key_sid)
     if len(candidates) < needed:
         sys.exit("Not enough available numbers found to buy. Aborting.")
     to_buy = candidates[:needed]
@@ -236,7 +243,7 @@ def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase):
             sys.exit("Cancelled.")
 
     for phone in to_buy:
-        bought, err = discovery.purchase_number(host, account_sid, auth_token, phone)
+        bought, err = discovery.purchase_number(host, account_sid, auth_token, phone, key_sid)
         if err:
             sys.exit(f"Failed to purchase {phone}: {err}")
         numbers.append(bought)
@@ -397,11 +404,11 @@ def describe_account(account_sid, info):
     return {"kind": kind, "status": info.get("status"), "friendly_name": info.get("friendly_name")}
 
 
-def run_video_recordings_step(config, account_sid, auth_token):
+def run_video_recordings_step(config, account_sid, auth_token, key_sid=None):
     """Video recordings need Playwright, so they live outside gen/core.py and are merged into the same results JSON."""
     from gen import video_recordings
     cfg = {"host": config["host"], "video_host": core.video_host_for(config["host"]), "account_sid": account_sid,
-           "auth_header": core.build_auth_header(account_sid, auth_token)}
+           "auth_header": core.build_auth_header(account_sid, auth_token, key_sid)}
     out = video_recordings.run_video_recordings(cfg, config["plan"])
     path = config["results_path"]
     try:
@@ -417,7 +424,7 @@ def run_video_recordings_step(config, account_sid, auth_token):
 
 def main():
     args = build_arg_parser().parse_args()
-    account_sid, auth_token, unattended, pre_tier = resolve_credentials(args)
+    account_sid, auth_token, unattended, pre_tier, key_sid = resolve_credentials(args)
 
     if unattended:
         if not args.tier:
@@ -430,7 +437,7 @@ def main():
         print(f"\nCredentials: {mask(account_sid)}.")
         tier = args.tier or ask_tier()
 
-    host, tier, info = discovery.confirm_environment(account_sid, auth_token, tier)
+    host, tier, info = discovery.confirm_environment(account_sid, auth_token, tier, key_sid)
     if not host:
         sys.exit(f"Could not authenticate against {tier} ({discovery.HOST_BY_TIER[tier]}). "
                   "Check the credentials, or that this is really the right tier.")
@@ -459,7 +466,7 @@ def main():
 
     # numbers are only needed (and only fetched/purchased) when a Voice category will run
     if any(plan.get(c, "0") not in (None, "0", 0) for c in VOICE_CATEGORIES):
-        numbers, purchased_any = handle_numbers(host, account_sid, auth_token, unattended, args.allow_purchase)
+        numbers, purchased_any = handle_numbers(host, account_sid, auth_token, unattended, args.allow_purchase, key_sid)
         print(f"\nUsing {len(numbers)} number(s): {', '.join(n['phone'] for n in numbers)}")
     else:
         numbers, purchased_any = [], False
@@ -480,6 +487,7 @@ def main():
         "host": host,
         "sid_env": sid_env,
         "token_env": token_env,
+        **({"key_env": args.key_env} if args.key_env else {}),
         "numbers": numbers,
         "plan": plan,
         "results_path": args.results_path or f"voice_batch_{tier}_{datetime.date.today():%Y%m%d}.json",
@@ -495,7 +503,7 @@ def main():
         print("\nRunning...\n")
         core.run(config)
         if plan.get("video_recordings") not in (None, "0", 0):
-            run_video_recordings_step(config, account_sid, auth_token)
+            run_video_recordings_step(config, account_sid, auth_token, key_sid)
 
     if mode in ("save", "both"):
         if not unattended:

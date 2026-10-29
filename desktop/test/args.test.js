@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildWizardArgs, quickProfile, QUICK_TESTS, validateProfile, validateCredentials, consoleUrl, VIDEO_AUDIO_ONLY, envNames, DEFAULTS } = require('../lib/args');
+const { buildWizardArgs, quickProfile, QUICK_TESTS, validateProfile, validateCredentials, consoleUrl, VIDEO_AUDIO_ONLY, AUTH_KINDS, envNames, DEFAULTS } = require('../lib/args');
 
 const base = () => ({
   name: 'Daily stage', tier: 'stage', categories: ['calls', 'recordings_transcriptions', 'conferences'],
@@ -42,7 +42,7 @@ test('--no-prod-cap is only added on prod, and never implies --confirm-prod', ()
 test('credentials never appear in argv', () => {
   const args = buildWizardArgs(base(), opts).join(' ');
   assert.ok(!/AC[0-9a-f]{32}/i.test(args));
-  assert.deepEqual(envNames('dev'), { sidEnv: 'VOICEGEN_SID_DEV', tokenEnv: 'VOICEGEN_TOKEN_DEV', videoKeyEnv: 'VOICEGEN_VKEY_DEV', videoSecretEnv: 'VOICEGEN_VSECRET_DEV' });
+  assert.deepEqual(envNames('dev'), { sidEnv: 'VOICEGEN_SID_DEV', tokenEnv: 'VOICEGEN_TOKEN_DEV', keyEnv: 'VOICEGEN_KEY_DEV', videoKeyEnv: 'VOICEGEN_VKEY_DEV', videoSecretEnv: 'VOICEGEN_VSECRET_DEV' });
 });
 
 test('validation catches what would crash or misbehave in core.py', () => {
@@ -186,4 +186,23 @@ test('AudioOnly flag for empty rooms: sent only when not automatic, validated', 
     assert.deepEqual(validateProfile({ ...p, videoAudioOnly: mode }), []);
   }
   assert.match(validateProfile({ ...p, videoAudioOnly: 'maybe' }).join(' '), /AudioOnly/);
+});
+
+test('API key auth: --key-env only for apikey profiles, key SID and secret validated', () => {
+  assert.ok(!buildWizardArgs(base(), opts).includes('--key-env'));
+  assert.ok(!buildWizardArgs({ ...base(), authKind: 'token' }, opts).includes('--key-env'));
+  const args = buildWizardArgs({ ...base(), authKind: 'apikey' }, opts);
+  assert.equal(args[args.indexOf('--key-env') + 1], 'VOICEGEN_KEY_STAGE');
+  assert.equal(envNames('prod').keyEnv, 'VOICEGEN_KEY_PROD');
+  assert.ok(!args.join(' ').match(/SK[0-9a-f]{32}/i)); // values never in argv
+  assert.deepEqual(validateProfile({ ...base(), authKind: 'apikey' }), []);
+  assert.match(validateProfile({ ...base(), authKind: 'nope' }).join(' '), /authentication/i);
+  assert.ok('apikey' in AUTH_KINDS && 'token' in AUTH_KINDS);
+
+  const sid = 'AC' + 'a'.repeat(32);
+  const key = 'SK' + 'b'.repeat(32);
+  assert.deepEqual(validateCredentials({ sid, token: 'secret', keySid: key }, 'apikey'), []);
+  assert.match(validateCredentials({ sid, token: 'secret', keySid: '' }, 'apikey').join(' '), /API Key SID/);
+  assert.match(validateCredentials({ sid, token: '', keySid: key }, 'apikey').join(' '), /API Key secret/);
+  assert.deepEqual(validateCredentials({ sid, token: 't' }), []); // token auth ignores keySid
 });

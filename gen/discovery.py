@@ -40,7 +40,7 @@ def print_datagen_env_template():
     print(f"export {DATAGEN_TOKEN_VAR}=")
     print(f"export {DATAGEN_TIER_VAR}=")
 
-def confirm_environment(account_sid, auth_token, tier):
+def confirm_environment(account_sid, auth_token, tier, key_sid=None):
     """The caller states which environment these credentials belong to
     (never guessed). This does exactly one GET, against that tier's host,
     to confirm the account actually exists/authenticates there. A wrong
@@ -49,14 +49,14 @@ def confirm_environment(account_sid, auth_token, tier):
     which one.
     Returns (host, tier, account_info) or (None, tier, None)."""
     host = HOST_BY_TIER[tier]
-    auth_header = build_auth_header(account_sid, auth_token)
+    auth_header = build_auth_header(account_sid, auth_token, key_sid)
     info = request(host, account_sid, auth_header, "GET", ".json")
     if info.get("error"):
         return None, tier, None
     return host, tier, info
 
-def list_voice_numbers(host, account_sid, auth_token):
-    auth_header = build_auth_header(account_sid, auth_token)
+def list_voice_numbers(host, account_sid, auth_token, key_sid=None):
+    auth_header = build_auth_header(account_sid, auth_token, key_sid)
     resp = request(host, account_sid, auth_header, "GET", "/IncomingPhoneNumbers.json?PageSize=50")
     numbers = resp.get("incoming_phone_numbers", [])
     return [
@@ -65,21 +65,21 @@ def list_voice_numbers(host, account_sid, auth_token):
         if n.get("capabilities", {}).get("voice")
     ]
 
-def search_available_numbers(host, account_sid, auth_token, country="US", count=5):
-    auth_header = build_auth_header(account_sid, auth_token)
+def search_available_numbers(host, account_sid, auth_token, country="US", count=5, key_sid=None):
+    auth_header = build_auth_header(account_sid, auth_token, key_sid)
     resp = request(host, account_sid, auth_header, "GET",
                     f"/AvailablePhoneNumbers/{country}/Local.json?VoiceEnabled=true&PageSize={count}")
     return [c["phone_number"] for c in resp.get("available_phone_numbers", [])]
 
-def purchase_number(host, account_sid, auth_token, phone_number):
-    auth_header = build_auth_header(account_sid, auth_token)
+def purchase_number(host, account_sid, auth_token, phone_number, key_sid=None):
+    auth_header = build_auth_header(account_sid, auth_token, key_sid)
     r = request(host, account_sid, auth_header, "POST", "/IncomingPhoneNumbers.json",
                 {"PhoneNumber": phone_number})
     if r.get("error"):
         return None, r.get("body")
     return {"phone": r["phone_number"], "sid": r["sid"]}, None
 
-def check_compliance_profile(host, account_sid, auth_token):
+def check_compliance_profile(host, account_sid, auth_token, key_sid=None):
     """Best-effort probe of Trust Hub's CustomerProfiles resource, so a
     missing/unapproved compliance profile can be surfaced BEFORE attempting
     a purchase, instead of discovering it reactively via a 400 mid-purchase
@@ -90,7 +90,7 @@ def check_compliance_profile(host, account_sid, auth_token):
     On any error this degrades to "unknown" rather than hard-blocking, so
     a working purchase flow is never blocked by a broken check.
     """
-    auth_header = build_auth_header(account_sid, auth_token)
+    auth_header = build_auth_header(account_sid, auth_token, key_sid)
     url_host = "trusthub.twilio.com"
     import json as _json
     import urllib.request as _req

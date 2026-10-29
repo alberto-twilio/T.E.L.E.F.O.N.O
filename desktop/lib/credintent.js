@@ -3,7 +3,7 @@
 //
 // existing: the stored profile or null; stored: its Keychain {sid, token} or null.
 // With stored credentials the SID is locked, so only a new token means "replace".
-const resolveCredentialIntent = ({ existing, stored, credentials }) => {
+const resolveCredentialIntent = ({ existing, stored, credentials, authKind = 'token' }) => {
   const errors = [];
   let creds = credentials || {};
   const newToken = Boolean((creds.token || '').trim());
@@ -17,6 +17,11 @@ const resolveCredentialIntent = ({ existing, stored, credentials }) => {
     } else if (stored && !given) {
       creds = { ...creds, sid: stored.sid };
     }
+  }
+  if (existing && stored && !newToken) {
+    // the secret is what proves a change: switching type or replacing the key SID needs the new secret too
+    if ((stored.keySid ? 'apikey' : 'token') !== authKind) errors.push('Enter the new credentials to switch between Auth Token and API Key.');
+    else if ((creds.keySid || '').trim() && creds.keySid.trim() !== stored.keySid) errors.push('Enter the API Key secret too to replace the API key.');
   }
   return { wantsCreds, creds, errors };
 };

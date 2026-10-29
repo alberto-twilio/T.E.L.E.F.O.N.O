@@ -69,8 +69,10 @@ not for someone running it.
   It builds wizard.py's *unattended* command (`desktop/lib/args.js`) and
   spawns it; it must not import or reimplement anything from `gen/`.
   Credentials go in the macOS Keychain (`lib/keychain.js`) and reach the child
-  only as env vars named by `--sid-env/--token-env`, never in argv, a profile
-  file, or a run log. `--confirm-prod` is passed only when the user typed
+  only as env vars named by `--sid-env/--token-env` (plus `--key-env` for a profile
+  with `authKind: 'apikey'`: the key SID, and `--token-env` then holds the key's
+  secret), never in argv, a profile file, or a run log. Only Main API keys are
+  supported (`/Accounts` and `/Keys` need it). `--confirm-prod` is passed only when the user typed
   `PROD` in the run dialog for *that run*; never store it on a profile, never
   infer it from `noProdCap`. **Run all** is one dialog that names every profile and,
   if any is prod, needs `PROD` typed once for that click; never skip or default it. `--allow-purchase` is deliberately not exposed.

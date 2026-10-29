@@ -8,9 +8,10 @@ const KINDS = ['main', 'sub', 'unknown'];
 
 const describeAccount = ({ pythonPath, wizardPath, tier, creds, timeoutMs = 45000 }) => new Promise((resolve, reject) => {
   if (!pythonPath) return reject(new Error('python3 was not found on this machine.'));
-  const { sidEnv, tokenEnv } = envNames(tier);
-  const child = spawn(pythonPath, ['-u', wizardPath, '--sid-env', sidEnv, '--token-env', tokenEnv, '--tier', tier, '--describe-account'], {
-    env: { ...process.env, [sidEnv]: creds.sid, [tokenEnv]: creds.token, PYTHONUNBUFFERED: '1' },
+  const { sidEnv, tokenEnv, keyEnv } = envNames(tier);
+  const keyArgs = creds.keySid ? ['--key-env', keyEnv] : [];
+  const child = spawn(pythonPath, ['-u', wizardPath, '--sid-env', sidEnv, '--token-env', tokenEnv, ...keyArgs, '--tier', tier, '--describe-account'], {
+    env: { ...process.env, [sidEnv]: creds.sid, [tokenEnv]: creds.token, ...(creds.keySid ? { [keyEnv]: creds.keySid } : {}), PYTHONUNBUFFERED: '1' },
   });
   let out = '';
   let err = '';
