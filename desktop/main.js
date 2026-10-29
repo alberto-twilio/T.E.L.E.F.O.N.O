@@ -8,7 +8,7 @@ const keychain = require('./lib/keychain');
 const { createRunner } = require('./lib/runner');
 const { describeAccount } = require('./lib/describe');
 const { resolveCredentialIntent } = require('./lib/credintent');
-const { TIERS, CATEGORIES, REGIONS, consoleUrl, VIDEO_ROOM_TYPES, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
+const { TIERS, CATEGORIES, REGIONS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
 
 const PYTHON_FALLBACKS = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3'];
 
@@ -35,7 +35,7 @@ const send = (channel, payload) => {
 const PROFILE_FIELDS = [
   'id', 'name', 'tier', 'categories', 'calls', 'callDuration',
   'recordingsTranscriptions', 'conferences', 'regions', 'noProdCap',
-  'videoEnabled', 'videoRooms', 'videoRoomTypes', 'videoPrefix',
+  'videoEnabled', 'videoRooms', 'videoRoomTypes', 'videoAudioOnly', 'videoPrefix',
   'videoRecordingsEnabled', 'videoComposeEnabled', 'videoRecRooms', 'videoParticipants', 'videoHold', 'videoTempKeys', 'videoKeyHint',
 ];
 const pickProfile = (p) => Object.fromEntries(PROFILE_FIELDS.filter((k) => k in p).map((k) => [k, p[k]]));
@@ -59,7 +59,7 @@ const main = async () => {
   }
 
   ipcMain.handle('app:info', () => ({
-    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, VIDEO_ROOM_TYPES, QUICK_TESTS, DEFAULTS,
+    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, QUICK_TESTS, DEFAULTS,
   }));
 
   // credentialsStored lets the UI flag a profile whose Keychain item is gone (deleted in Keychain Access, new Mac, ...)

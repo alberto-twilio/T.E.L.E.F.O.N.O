@@ -111,6 +111,8 @@ python3 wizard.py ... --categories video_rooms \
   --video-room-prefix telefono
 ```
 
+`--video-audio-only {auto,true,false,omit}` sets what is sent for the `AudioOnly` flag: `auto` (default) is the behaviour below, `true`/`false` send that value for every type, `omit` never sends it (the account default applies). Legacy types reject the flag with error 53124, so this is configurable (Customize > Video in the app).
+
 Group rooms are created with `AudioOnly=false` explicitly (stage's account
 default is audio-only, rejected with 53127). Only `group` is used by default: accounts that started using Video after
 2024-10-21 can't create the legacy types (errors 53126/53127). Types cycle

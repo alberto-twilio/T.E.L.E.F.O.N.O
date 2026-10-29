@@ -131,6 +131,9 @@ def build_arg_parser():
                    help="Comma list of room types to cycle: group,group-small,peer-to-peer (default: all three)")
     p.add_argument("--video-room-prefix", dest="video_room_prefix", default="telefono",
                    help="Room name prefix: letters, digits, - and _ (default telefono)")
+    p.add_argument("--video-audio-only", dest="video_audio_only", default="auto", choices=core.VIDEO_AUDIO_ONLY_MODES,
+                   help="AudioOnly flag for empty rooms: auto (Group sends false, legacy types send nothing), "
+                        "true or false (sent for every type), omit (never sent; the account default applies).")
     p.add_argument("--video-recordings", dest="video_recordings", default="2-6",
                    help="Participants that join recorded Video rooms (Playwright needed): N, 'min-max' or 0. "
                         "Default 2-6. Needs video_recordings in --categories.")
@@ -309,6 +312,7 @@ def build_plan(args, unattended):
             sys.exit("--video-room-prefix: letters, digits, - and _ only (max 40).")
         plan["video_room_types"] = room_types or None
         plan["video_room_prefix"] = prefix
+        plan["video_audio_only"] = args.video_audio_only
 
     return plan
 
@@ -329,6 +333,8 @@ def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path,
         if plan.get("video_room_types"):
             parts.append(f"--video-room-types {','.join(plan['video_room_types'])}")
         parts.append(f"--video-room-prefix {plan.get('video_room_prefix', 'telefono')}")
+        if plan.get("video_audio_only") not in (None, "auto"):
+            parts.append(f"--video-audio-only {plan['video_audio_only']}")
     if plan.get("video_recordings") not in (None, "0", 0):
         parts.append(f"--video-recordings {plan['video_recordings']} --video-rec-rooms {plan.get('video_rec_rooms', '2-3')} "
                      f"--video-hold {plan.get('video_hold', '5-15')}")

@@ -33,8 +33,16 @@ const DEFAULTS = {
   videoParticipants: '2-6',
   videoHold: '5-15',
   videoPrefix: 'telefono',
+  videoAudioOnly: 'auto',
 };
 const VIDEO_ROOM_TYPES = ['group', 'group-small', 'peer-to-peer'];
+// What empty rooms send for the AudioOnly flag (wizard.py --video-audio-only); legacy types reject it with 53124
+const VIDEO_AUDIO_ONLY = {
+  auto: 'Automatic (Group sends false, legacy types nothing)',
+  false: 'Always send AudioOnly=false',
+  true: 'Always send AudioOnly=true',
+  omit: 'Never send it (account default applies)',
+};
 
 const SID_RE = /^AC[0-9a-f]{32}$/i;
 const COUNT_RE = /^(\d+)(?:-(\d+))?$/;
@@ -65,6 +73,7 @@ const validateVideo = (p) => {
   if (roomsErr) errors.push(roomsErr);
   if (!roomsErr && !positive(p.videoRooms) && !p.videoRecordingsEnabled) errors.push('Video: set rooms above 0 or enable recordings.');
   if ((p.videoRoomTypes || []).some((t) => !VIDEO_ROOM_TYPES.includes(t))) errors.push('Unknown video room type.');
+  if (p.videoAudioOnly != null && !(String(p.videoAudioOnly) in VIDEO_AUDIO_ONLY)) errors.push('Unknown AudioOnly setting.');
   if (!PREFIX_RE.test(String(p.videoPrefix).trim())) errors.push('Video room prefix: letters, digits, - and _ only (max 40).');
   if (p.videoRecordingsEnabled) {
     for (const [label, spec] of [['Video participants', p.videoParticipants], ['Video recorded rooms', p.videoRecRooms]]) {
@@ -178,6 +187,7 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
   if (profile.videoEnabled) {
     args.push('--video-rooms', String(profile.videoRooms).trim(), '--video-room-prefix', String(profile.videoPrefix).trim());
     if (profile.videoRoomTypes && profile.videoRoomTypes.length) args.push('--video-room-types', profile.videoRoomTypes.join(','));
+    if (profile.videoAudioOnly && profile.videoAudioOnly !== 'auto') args.push('--video-audio-only', profile.videoAudioOnly);
     if (profile.videoRecordingsEnabled) {
       args.push('--video-recordings', String(profile.videoParticipants).trim(), '--video-rec-rooms', String(profile.videoRecRooms).trim(),
         '--video-hold', String(profile.videoHold).trim());
@@ -200,6 +210,6 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
 };
 
 module.exports = {
-  TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, consoleUrl, VIDEO_ROOM_TYPES, DEFAULTS,
+  TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, DEFAULTS,
   QUICK_TESTS, quickProfile, validateProfile, validateCredentials, envNames, needsVideoKey, categoriesFor, buildWizardArgs,
 };
