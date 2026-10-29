@@ -56,7 +56,8 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
     const id = crypto.randomUUID();
     const paths = store.paths(id);
     const args = buildWizardArgs(profile, { wizardPath, resultsPath: paths.results, confirmProd });
-    const { sidEnv, tokenEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier);
+    const { sidEnv, tokenEnv, keyEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier);
+    if (profile.authKind === 'apikey' && !creds.keySid) throw new Error('This profile uses an API key but no key SID is stored. Edit it and enter the key again.');
     const videoKey = needsVideoKey(profile) ? await keychain.getCredentials(`${profile.id}:videokey`) : null;
     if (needsVideoKey(profile) && !videoKey) throw new Error('This profile needs a Video API key but none is stored. Edit it and enter one, or use temporary keys.');
 
@@ -101,6 +102,7 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
     const child = spawn(pythonPath, args, {
       env: {
         ...process.env, [sidEnv]: creds.sid, [tokenEnv]: creds.token, PYTHONUNBUFFERED: '1',
+        ...(profile.authKind === 'apikey' ? { [keyEnv]: creds.keySid } : {}),
         ...(videoKey ? { [videoKeyEnv]: videoKey.sid, [videoSecretEnv]: videoKey.token } : {}),
       },
       cwd: require('node:path').dirname(paths.log),

@@ -17,8 +17,9 @@ const security = (args) =>
   });
 
 // -U updates in place if the item already exists.
-const setCredentials = (profileId, { sid, token }) =>
-  security(['add-generic-password', '-U', '-s', SERVICE, '-a', profileId, '-w', JSON.stringify({ sid, token })]);
+// keySid is only present for profiles that authenticate with an API key (token is then that key's secret).
+const setCredentials = (profileId, { sid, token, keySid }) =>
+  security(['add-generic-password', '-U', '-s', SERVICE, '-a', profileId, '-w', JSON.stringify({ sid, token, ...(keySid ? { keySid } : {}) })]);
 
 const getCredentials = async (profileId) => {
   try {

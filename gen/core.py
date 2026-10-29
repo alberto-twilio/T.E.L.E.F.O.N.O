@@ -26,8 +26,10 @@ from collections import Counter
 
 # ---------------------------------------------------------------- HTTP ----
 
-def build_auth_header(account_sid, auth_token):
-    return "Basic " + base64.b64encode(f"{account_sid}:{auth_token}".encode()).decode()
+def build_auth_header(account_sid, auth_token, key_sid=None):
+    """Basic auth. With an API Key (key_sid) the username is the key SID and the password
+    is the key's secret; the account SID is then only used in URL paths."""
+    return "Basic " + base64.b64encode(f"{key_sid or account_sid}:{auth_token}".encode()).decode()
 
 def request(host, account_sid, auth_header, method, path, data=None):
     url = f"https://{host}/2010-04-01/Accounts/{account_sid}{path}"
@@ -460,10 +462,11 @@ def run(config):
     by the standalone emitted script (config is the prepended CONFIG dict)."""
     account_sid = os.environ[config["sid_env"]]
     auth_token = os.environ[config["token_env"]]
+    key_sid = os.environ[config["key_env"]] if config.get("key_env") else None
     ctx = {
         "host": config["host"],
         "account_sid": account_sid,
-        "auth_header": build_auth_header(account_sid, auth_token),
+        "auth_header": build_auth_header(account_sid, auth_token, key_sid),
         "numbers": config["numbers"],
         "video_host": video_host_for(config["host"]),
     }

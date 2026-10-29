@@ -194,7 +194,7 @@ const profileView = (p) => {
   const runs = state.runs.filter((r) => r.profileId === p.id);
   const recs = p.videoEnabled && p.videoRecordingsEnabled;
   const groups = [
-    { items: [['Account SID', h('div', { class: 'row' }, accountSid(p), consoleLink(p)), true], ['Environment', tierBadge(p.tier)]] },
+    { items: [['Account SID', h('div', { class: 'row' }, accountSid(p), consoleLink(p)), true], ['Environment', tierBadge(p.tier)], ['Authentication', state.info.AUTH_KINDS[p.authKind || 'token']]] },
     { title: 'Voice', items: [
       ['Calls', p.categories.includes('calls') ? `${p.calls}  (duration ${p.callDuration})` : 'off'],
       ['Recordings / transcriptions', p.categories.includes('recordings_transcriptions') ? p.recordingsTranscriptions : 'off'],
@@ -352,6 +352,24 @@ const editView = (existing) => {
   // The stored token is never read back into the UI; asterisks are a placeholder, so empty still means "keep".
   const tokenInput = text('f-token', '', 'password');
   if (sidLocked) tokenInput.setAttribute('placeholder', '*'.repeat(32));
+  // Auth Token, or a Main API Key (its secret goes in the same field, the key SID in its own)
+  const authKind = h('select', { id: 'f-authkind' }, Object.entries(state.info.AUTH_KINDS).map(([value, label]) =>
+    h('option', { value, selected: value === (p.authKind || 'token') }, label)));
+  const keySidInput = text('f-keysid', '');
+  if (sidLocked && p.authKind === 'apikey') keySidInput.setAttribute('placeholder', 'SK… (stored; leave blank to keep)');
+  const keySidField = field('API Key SID', keySidInput, 'SK followed by 32 hex characters.');
+  const secretLabel = h('label', {}, 'Auth Token');
+  const secretHint = h('div', { class: 'hint' });
+  const syncAuth = () => {
+    const apikey = authKind.value === 'apikey';
+    keySidField.style.display = apikey ? '' : 'none';
+    secretLabel.textContent = apikey ? 'API Key secret' : 'Auth Token';
+    secretHint.textContent = apikey
+      ? 'Use a Main key (created in the Console). Standard keys cannot read the account or create temporary Video keys.'
+      : existing && p.credentialsStored ? 'Leave blank to keep the stored one.' : 'The account type (parent or subaccount) is read from Twilio when you save.';
+  };
+  authKind.addEventListener('change', syncAuth);
+  queueMicrotask(syncAuth);
 
   const errorBox = h('ul', { class: 'errors', id: 'form-errors' });
   const noCap = h('div', { id: 'nocap-wrap' },
@@ -479,7 +497,9 @@ const editView = (existing) => {
     h('h3', {}, existing ? 'Credentials (stored in the macOS Keychain)' : 'Credentials (stored in the macOS Keychain)'),
     h('div', { class: 'grid' },
       sidField,
-      field('Auth Token', tokenInput, existing && p.credentialsStored ? 'Leave blank to keep the stored one.' : 'The account type (parent or subaccount) is read from Twilio when you save.')),
+      field('Authentication', authKind),
+      keySidField,
+      h('div', {}, secretLabel, tokenInput, secretHint)),
     voiceSection,
     videoSection,
     errorBox);
@@ -490,7 +510,7 @@ const editView = (existing) => {
     return {
       profile: {
         ...(existing ? { id: existing.id } : {}),
-        name: val('#f-name').trim(), tier: tier.value, categories: voiceOn.checked ? checked('categories') : [],
+        name: val('#f-name').trim(), tier: tier.value, authKind: val('#f-authkind'), categories: voiceOn.checked ? checked('categories') : [],
         calls: val('#f-calls').trim(), callDuration: val('#f-duration').trim(),
         recordingsTranscriptions: val('#f-rec').trim(), conferences: val('#f-conf').trim(),
         regions: checked('regions'), noProdCap: tier.value === 'prod' && $('#f-nocap').checked,
@@ -503,7 +523,7 @@ const editView = (existing) => {
         ...(existing && existing.videoKeyHint ? { videoKeyHint: existing.videoKeyHint } : {}),
       },
       videoKey: tempKeys.checked ? null : { sid: val('#f-video-keysid').trim(), secret: val('#f-video-keysecret').trim() },
-      credentials: { sid: val('#f-sid').trim(), token: val('#f-token').trim() },
+      credentials: { sid: val('#f-sid').trim(), token: val('#f-token').trim(), keySid: val('#f-keysid').trim() },
     };
   };
 

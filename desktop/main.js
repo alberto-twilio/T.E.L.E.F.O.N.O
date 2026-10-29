@@ -8,7 +8,7 @@ const keychain = require('./lib/keychain');
 const { createRunner } = require('./lib/runner');
 const { describeAccount } = require('./lib/describe');
 const { resolveCredentialIntent } = require('./lib/credintent');
-const { TIERS, CATEGORIES, REGIONS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
+const { TIERS, CATEGORIES, REGIONS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, AUTH_KINDS, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
 
 const PYTHON_FALLBACKS = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3'];
 
@@ -33,7 +33,7 @@ const send = (channel, payload) => {
 };
 
 const PROFILE_FIELDS = [
-  'id', 'name', 'tier', 'categories', 'calls', 'callDuration',
+  'id', 'name', 'tier', 'authKind', 'categories', 'calls', 'callDuration',
   'recordingsTranscriptions', 'conferences', 'regions', 'noProdCap',
   'videoEnabled', 'videoRooms', 'videoRoomTypes', 'videoAudioOnly', 'videoPrefix',
   'videoRecordingsEnabled', 'videoComposeEnabled', 'videoRecRooms', 'videoParticipants', 'videoHold', 'videoTempKeys', 'videoKeyHint',
@@ -59,7 +59,7 @@ const main = async () => {
   }
 
   ipcMain.handle('app:info', () => ({
-    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, QUICK_TESTS, DEFAULTS,
+    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, AUTH_KINDS, QUICK_TESTS, DEFAULTS,
   }));
 
   // credentialsStored lets the UI flag a profile whose Keychain item is gone (deleted in Keychain Access, new Mac, ...)
@@ -70,7 +70,7 @@ const main = async () => {
       videoKeyStored: Boolean(await keychain.getCredentials(`${p.id}:videokey`)),
     }))));
 
-  // credentials: { sid, token } on create; on edit, leave token blank to keep the stored one.
+  // credentials: { sid, token, keySid? } on create (keySid when authKind is 'apikey', token is then the key's secret); on edit, leave token blank to keep the stored one.
   // videoKey: { sid, secret } for a Video API key; blank on edit keeps the stored one. Stored in the Keychain like the account credentials.
   ipcMain.handle('profiles:save', async (_e, { profile, credentials, videoKey }) => {
     const clean = pickProfile(profile);
@@ -79,10 +79,10 @@ const main = async () => {
     const hasStored = existing ? Boolean(await keychain.getCredentials(clean.id)) : false;
     // a profile whose stored credentials went missing must get them re-entered, not silently saved without
     const stored = existing && hasStored ? await keychain.getCredentials(clean.id) : null;
-    const intent = resolveCredentialIntent({ existing, stored, credentials });
+    const intent = resolveCredentialIntent({ existing, stored, credentials, authKind: clean.authKind || 'token' });
     const { wantsCreds, creds } = intent;
     errors.push(...intent.errors);
-    if (wantsCreds) errors.push(...validateCredentials(creds));
+    if (wantsCreds) errors.push(...validateCredentials(creds, clean.authKind || 'token'));
     const newKey = videoKey && videoKey.sid && videoKey.sid.trim() && videoKey.secret && videoKey.secret.trim() ? { sid: videoKey.sid.trim(), token: videoKey.secret.trim() } : null;
     if (needsVideoKey(clean)) {
       const keyStored = clean.id ? Boolean(await keychain.getCredentials(`${clean.id}:videokey`)) : false;
@@ -95,12 +95,12 @@ const main = async () => {
     if (wantsCreds) {
       clean.sidHint = creds.sid.trim().slice(-4);
       // main vs subaccount is read once, when the account is added (or its token replaced); also verifies the credentials on that tier
-      const info = await describeAccount({ pythonPath, wizardPath, tier: clean.tier, creds: { sid: creds.sid.trim(), token: creds.token.trim() } });
+      const info = await describeAccount({ pythonPath, wizardPath, tier: clean.tier, creds: { sid: creds.sid.trim(), token: creds.token.trim(), ...(clean.authKind === 'apikey' ? { keySid: creds.keySid.trim() } : {}) } });
       clean.accountKind = info.kind;
       clean.accountName = info.friendlyName;
     }
     const saved = store.saveProfile(clean);
-    if (wantsCreds) await keychain.setCredentials(saved.id, { sid: creds.sid.trim(), token: creds.token.trim() });
+    if (wantsCreds) await keychain.setCredentials(saved.id, { sid: creds.sid.trim(), token: creds.token.trim(), ...(clean.authKind === 'apikey' ? { keySid: creds.keySid.trim() } : {}) });
     if (newKey) await keychain.setCredentials(`${saved.id}:videokey`, newKey);
     return saved;
   });

@@ -44,7 +44,10 @@ const VIDEO_AUDIO_ONLY = {
   omit: 'Never send it (account default applies)',
 };
 
+// How the account is authenticated. A Main API Key (not Standard) can also read the account and create the temporary Video keys.
+const AUTH_KINDS = { token: 'Auth Token', apikey: 'Main API Key' };
 const SID_RE = /^AC[0-9a-f]{32}$/i;
+const KEY_SID_RE = /^SK[0-9a-f]{32}$/i;
 const COUNT_RE = /^(\d+)(?:-(\d+))?$/;
 const DURATION_TOKEN = '\\d+(?:\\.\\d+)?[sm]?';
 const DURATION_RE = new RegExp(`^(${DURATION_TOKEN})-(${DURATION_TOKEN})$`);
@@ -107,20 +110,24 @@ const validateProfile = (p) => {
     if (err) errors.push(err);
   }
   if ((p.regions || []).some((r) => !REGIONS.includes(r))) errors.push('Unknown conference region.');
+  if (p.authKind != null && !(p.authKind in AUTH_KINDS)) errors.push('Unknown authentication type.');
   if (p.videoEnabled) errors.push(...validateVideo(p));
   return errors;
 };
 
-const validateCredentials = ({ sid, token }) => {
+const validateCredentials = ({ sid, token, keySid }, authKind = 'token') => {
   const errors = [];
+  const apikey = authKind === 'apikey';
   if (!SID_RE.test((sid || '').trim())) errors.push('Account SID must look like AC followed by 32 hex characters.');
-  if (!(token || '').trim()) errors.push('Auth Token is required.');
+  if (apikey && !KEY_SID_RE.test((keySid || '').trim())) errors.push('API Key SID must look like SK followed by 32 hex characters.');
+  if (!(token || '').trim()) errors.push(apikey ? 'API Key secret is required.' : 'Auth Token is required.');
   return errors;
 };
 
 const envNames = (tier) => ({
   sidEnv: `VOICEGEN_SID_${tier.toUpperCase()}`,
   tokenEnv: `VOICEGEN_TOKEN_${tier.toUpperCase()}`,
+  keyEnv: `VOICEGEN_KEY_${tier.toUpperCase()}`,
   videoKeyEnv: `VOICEGEN_VKEY_${tier.toUpperCase()}`,
   videoSecretEnv: `VOICEGEN_VSECRET_${tier.toUpperCase()}`,
 });
@@ -168,11 +175,12 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
   const errors = validateProfile(profile);
   if (errors.length) throw new Error(errors.join(' '));
 
-  const { sidEnv, tokenEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier);
+  const { sidEnv, tokenEnv, keyEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier);
   const args = [
     '-u', wizardPath,
     '--sid-env', sidEnv,
     '--token-env', tokenEnv,
+    ...(profile.authKind === 'apikey' ? ['--key-env', keyEnv] : []), // the token env then holds the API key secret
     '--tier', profile.tier,
     '--categories', categoriesFor(profile).join(','),
     '--calls', String(profile.calls).trim(),
@@ -210,6 +218,6 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
 };
 
 module.exports = {
-  TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, DEFAULTS,
+  TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, AUTH_KINDS, KEY_SID_RE, DEFAULTS,
   QUICK_TESTS, quickProfile, validateProfile, validateCredentials, envNames, needsVideoKey, categoriesFor, buildWizardArgs,
 };

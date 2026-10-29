@@ -78,7 +78,12 @@ entry or launchd job whenever you're ready to schedule this.
 
 Pass `--sid-env`/`--token-env` (naming environment variables that must
 already hold the real credential values) and the run becomes fully
-non-interactive:
+non-interactive. To authenticate with a **Main API Key** instead of the Auth
+Token, also pass `--key-env` (env var holding the key SID `SK...`) and put the
+key's *secret* in the `--token-env` variable; `--sid-env` stays the Account SID.
+It must be a Main key: Standard keys can't read `/Accounts` (the account
+lookup) or create the temporary Video keys. The desktop app has an
+"Authentication" selector per profile for this.
 
 ```bash
 export VOICEGEN_SID_STAGE=...

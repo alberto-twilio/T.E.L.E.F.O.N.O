@@ -18,6 +18,7 @@ echo "[plan] calls=2"
 echo "[call 1/2] completed sid=CA1"
 echo "[call 2/2] failed sid=CA2"
 echo "sid-visible: $VOICEGEN_SID_STAGE"
+echo "key-visible: $VOICEGEN_KEY_STAGE"
 while [ $# -gt 0 ]; do [ "$1" = "--results-path" ] && out="$2"; shift; done
 echo '{"calls":[{"sid":"CA1"},{"sid":null,"error":"boom"}],"recordings_transcriptions":[],"conferences":[{"conference_sid":"CF1"}]}' > "$out"
 exit \${FAKE_EXIT:-0}
@@ -25,7 +26,7 @@ exit \${FAKE_EXIT:-0}
   return file;
 };
 
-const setup = (t) => {
+const setup = (t, creds = { sid: 'ACtest', token: 'secret-token' }) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vtdg-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const store = createStore(dir);
@@ -34,7 +35,7 @@ const setup = (t) => {
     recordingsTranscriptions: DEFAULTS.recordingsTranscriptions, conferences: DEFAULTS.conferences, regions: [],
   });
   const events = [];
-  const keychain = { getCredentials: async () => ({ sid: 'ACtest', token: 'secret-token' }) };
+  const keychain = { getCredentials: async () => creds };
   const runner = createRunner({
     store, keychain, pythonPath: fakePython(dir), wizardPath: '/x/wizard.py',
     send: (channel, payload) => events.push([channel, JSON.parse(JSON.stringify(payload))]),
@@ -155,4 +156,21 @@ test('resolveStatus: partial only when some items failed and some worked', () =>
   assert.equal(resolveStatus('success', s(3, 10)), 'partial');
   assert.equal(resolveStatus('success', s(10, 10)), 'failed');
   assert.equal(resolveStatus('stopped', s(10, 10)), 'stopped');
+});
+
+test('API key profile: key SID reaches the child as an env var named by --key-env, never in argv', async (t) => {
+  const { store, profile, runner, events } = setup(t, { sid: 'ACtest', token: 'key-secret', keySid: 'SKtest' });
+  store.saveProfile({ id: profile.id, authKind: 'apikey' });
+  await runner.start(profile.id);
+  await finished(events);
+  const log = store.readLog(store.listRuns()[0].id);
+  assert.match(log, /--key-env VOICEGEN_KEY_STAGE/);
+  assert.match(log, /key-visible: SKtest/);
+  assert.ok(!log.includes('key-secret'));
+});
+
+test('API key profile without a stored key SID refuses to run', async (t) => {
+  const { store, profile, runner } = setup(t);
+  store.saveProfile({ id: profile.id, authKind: 'apikey' });
+  await assert.rejects(runner.start(profile.id), /key SID/);
 });
