@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildWizardArgs, quickProfile, QUICK_TESTS, validateProfile, validateCredentials, consoleUrl, envNames, DEFAULTS } = require('../lib/args');
+const { buildWizardArgs, quickProfile, QUICK_TESTS, validateProfile, validateCredentials, consoleUrl, VIDEO_AUDIO_ONLY, envNames, DEFAULTS } = require('../lib/args');
 
 const base = () => ({
   name: 'Daily stage', tier: 'stage', categories: ['calls', 'recordings_transcriptions', 'conferences'],
@@ -174,4 +174,16 @@ test('console link points at the account page for the right environment', () => 
   assert.equal(consoleUrl('prod', 'nope'), 'https://console.twilio.com/'); // unreadable/odd SID: console home, never a malformed path
   assert.equal(consoleUrl('prod', undefined), 'https://console.twilio.com/');
   assert.equal(consoleUrl('mars', sid), undefined);
+});
+
+test('AudioOnly flag for empty rooms: sent only when not automatic, validated', () => {
+  const p = { ...base(), categories: [], videoEnabled: true, ...videoFields(), videoRoomTypes: ['peer-to-peer'] };
+  assert.ok(!buildWizardArgs(p, opts).includes('--video-audio-only'));
+  assert.ok(!buildWizardArgs({ ...p, videoAudioOnly: 'auto' }, opts).includes('--video-audio-only'));
+  for (const mode of Object.keys(VIDEO_AUDIO_ONLY).filter((m) => m !== 'auto')) {
+    const args = buildWizardArgs({ ...p, videoAudioOnly: mode }, opts);
+    assert.equal(args[args.indexOf('--video-audio-only') + 1], mode);
+    assert.deepEqual(validateProfile({ ...p, videoAudioOnly: mode }), []);
+  }
+  assert.match(validateProfile({ ...p, videoAudioOnly: 'maybe' }).join(' '), /AudioOnly/);
 });

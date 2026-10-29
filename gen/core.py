@@ -293,18 +293,29 @@ def pick_room_type(i, types):
     types = types or DEFAULT_VIDEO_ROOM_TYPES
     return types[i % len(types)]
 
-def room_params(name, rtype):
-    """Group rooms send AudioOnly=false explicitly: on stage the account default
-    is audio-only, which is rejected (53127) unless overridden. Legacy types
-    are sent as-is (only older accounts accept them)."""
-    if rtype == "group":
-        return {"UniqueName": name, "AudioOnly": "false"}
-    return {"UniqueName": name, "Type": rtype}
+VIDEO_AUDIO_ONLY_MODES = ["auto", "true", "false", "omit"]
+
+def room_params(name, rtype, audio_only="auto"):
+    """audio_only decides what is sent for the AudioOnly flag. "auto": Group rooms
+    send AudioOnly=false explicitly (on stage the account default is audio-only,
+    which is rejected with 53127 unless overridden) and legacy types send nothing
+    (only older accounts accept them). "true"/"false" send that value for every
+    type; "omit" never sends the flag, so the account default applies. Legacy
+    types reject the flag with 53124, so it is configurable instead of fixed."""
+    params = {"UniqueName": name}
+    if rtype != "group":
+        params["Type"] = rtype
+    if audio_only == "auto":
+        if rtype == "group":
+            params["AudioOnly"] = "false"
+    elif audio_only in ("true", "false"):
+        params["AudioOnly"] = audio_only
+    return params
 
 def video_room_name(prefix, stamp, i):
     return f"{prefix}-{stamp}-{i + 1}"
 
-def run_video_rooms(ctx, n_spec, types=None, prefix="telefono"):
+def run_video_rooms(ctx, n_spec, types=None, prefix="telefono", audio_only="auto"):
     """Creates Video rooms and ends each one explicitly (Status=completed),
     same reasoning as conferences: never rely on the idle timeout to close
     them. Rooms with no participants have ~0 duration and no recordings;
@@ -317,7 +328,7 @@ def run_video_rooms(ctx, n_spec, types=None, prefix="telefono"):
         rtype = pick_room_type(i, types)
         name = video_room_name(prefix, stamp, i)
         r = video_request(ctx["video_host"], ctx["auth_header"], "POST", "/Rooms",
-                          room_params(name, rtype))
+                          room_params(name, rtype, audio_only))
         sid = r.get("sid")
         error = r.get("body") if r.get("error") else None
         completed = False
@@ -361,7 +372,8 @@ def run_batch(ctx, plan):
         results["conferences"] = []
     if spec_enabled(plan.get("video_rooms")):
         results["video_rooms"] = run_video_rooms(ctx, plan["video_rooms"], plan.get("video_room_types"),
-                                                 plan.get("video_room_prefix") or "telefono")
+                                                 plan.get("video_room_prefix") or "telefono",
+                                                 plan.get("video_audio_only") or "auto")
     else:
         results["video_rooms"] = []
     return results

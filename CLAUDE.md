@@ -190,6 +190,9 @@ not for someone running it.
   `video_recordings` (participants) and `video_rec_rooms` at 30 per run
   (`--no-prod-cap` lifts it, like for voice). Don't add any other bypass.
 - The Video host is derived from the API host (`video_host_for`), not guessed.
+- The `AudioOnly` flag of empty rooms is configurable (`--video-audio-only auto|true|false|omit`, plan key
+  `video_audio_only`, `room_params` in `gen/core.py`); `auto` is the original behaviour (Group sends false,
+  legacy types send nothing). Recorded rooms (`video_recordings.py`) are always Group with `AudioOnly=false`.
 - Numbers are only fetched/purchased when a Voice category runs.
 - Progress-format coupling: `[plan] video_rooms=N` and `[video_room i/n]` are
   parsed by `desktop/lib/progress.js`; change both together.
