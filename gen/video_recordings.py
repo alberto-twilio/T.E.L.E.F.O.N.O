@@ -30,6 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import signal
+import sys
 
 from . import core
 
@@ -270,8 +271,13 @@ def run_video_recordings(cfg, plan):
 
     try:
         import playwright  # noqa: F401
-    except ImportError:
-        msg = "Playwright is not installed for this Python. Run: pip3 install playwright"
+    except ImportError as e:
+        from gen import pyenv
+        print(f"[debug] import playwright failed: {e!r}", flush=True)
+        for line in pyenv.debug_lines():
+            print(line, flush=True)
+        msg = (f"Playwright is not installed for this Python ({sys.executable}). "
+               f"Run: {sys.executable} -m pip install playwright")
         print(f"ERROR: {msg}", flush=True)
         return {"video_recordings": [{"index": i, "room_name": None, "room_sid": None, "identity": f"p{i + 1}",
                                       "hold_seconds": 0, "joined": False, "error": msg} for i in range(participants)],

@@ -98,12 +98,22 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
       }
     };
 
+    const cwd = require('node:path').dirname(paths.log);
+    // Debug header. Safe to log: args only carry env var NAMES, never credential values (see args.js).
+    emit([
+      `[debug] command: ${pythonPath} ${args.join(' ')}`,
+      `[debug] cwd: ${cwd}`,
+      `[debug] PATH: ${process.env.PATH || '(unset)'}`,
+      `[debug] app: electron=${process.versions.electron || 'n/a'} node=${process.version} platform=${process.platform}-${process.arch}`,
+      '',
+    ].join('\n'));
+
     const child = spawn(pythonPath, args, {
       env: {
         ...process.env, [sidEnv]: creds.sid, [tokenEnv]: creds.token, PYTHONUNBUFFERED: '1',
         ...(videoKey ? { [videoKeyEnv]: videoKey.sid, [videoSecretEnv]: videoKey.token } : {}),
       },
-      cwd: require('node:path').dirname(paths.log),
+      cwd,
     });
     const entry = { child, stopped: false };
     active.set(id, entry);

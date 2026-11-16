@@ -417,6 +417,10 @@ def run_video_recordings_step(config, account_sid, auth_token):
 
 def main():
     args = build_arg_parser().parse_args()
+    if not args.describe_account:  # that mode's stdout is parsed (last line), keep it clean
+        from gen import pyenv
+        for line in pyenv.debug_lines():
+            print(line, flush=True)
     account_sid, auth_token, unattended, pre_tier = resolve_credentials(args)
 
     if unattended:
