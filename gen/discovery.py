@@ -91,7 +91,10 @@ def check_compliance_profile(host, account_sid, auth_token):
     a working purchase flow is never blocked by a broken check.
     """
     auth_header = build_auth_header(account_sid, auth_token)
-    url_host = "trusthub.twilio.com"
+    # Same tier as the API host: api.dev.twilio.com -> trusthub.dev.twilio.com.
+    # Hitting prod Trust Hub with dev/stage credentials 401s ("unknown"), which
+    # used to let the run continue until the purchase itself failed.
+    url_host = ("trusthub." + host[len("api."):]) if host.startswith("api.") else "trusthub.twilio.com"
     import json as _json
     import urllib.request as _req
     import urllib.error as _err
@@ -108,6 +111,10 @@ def check_compliance_profile(host, account_sid, auth_token):
             return "approved"
         return f"not_approved ({statuses})"
     except _err.HTTPError as e:
-        return f"unknown (HTTP {e.code})"
+        try:
+            detail = e.read().decode()[:300]
+        except Exception:
+            detail = ""
+        return f"unknown (HTTP {e.code} from {url_host}) {detail}".strip()
     except Exception as e:
         return f"unknown ({e})"
