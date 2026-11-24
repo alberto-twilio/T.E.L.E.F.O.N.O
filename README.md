@@ -31,25 +31,34 @@ npm test
 npm run dist
 ```
 
-`npm run dist` builds `desktop/dist/mac-arm64/TELEFONO.app` (unsigned). Open it
-from there, or copy it to `/Applications`:
+`npm run dist` builds `desktop/dist/mac-arm64/TELEFONO.app`. To run it from source without building, use `npm start` in `desktop/`.
 
-```bash
-open desktop/dist/mac-arm64/TELEFONO.app
-```
+## Note for logs in IE1 or AU1
 
-```bash
-ditto desktop/dist/mac-arm64/TELEFONO.app /Applications/TELEFONO.app
-```
+Every region has its own Auth Token. Make sure to get the correct one from `/settings/us1/api-keys/auth-tokens`.
 
-To run it from source without building, use `npm start` in `desktop/`.
+To generate logs in non-US regions, numbers must have the proper **inbound voice region** configured.
+This setting is not needed in US because it defaults to us1, unless the number was routed to another region before. If they don't match, calls will fail.
 
-The app bundles a copy of `wizard.py` and `gen/`, so rebuild it after changing
-the Python code. Credentials are stored in the macOS Keychain, and profiles and
-run history in `~/Library/Application Support/voice-test-data-gen-desktop/`, so
-rebuilding or replacing the app keeps them.
+To fix this:
 
-## `wizard.py`
+- **App:** tick **Route the numbers to this data region** on the profile.
+- **Command line:** add `--route-numbers`.
+
+Before each run, this sets the inbound voice region of the numbers the run uses
+to the run's region, and prints each change.
+
+Also outside us1:
+
+- Numbers attached to an Elastic SIP Trunk are skipped, because the trunk takes
+  their inbound calls.
+- Video is us1 only.
+
+Regions available: prod `us1, ie1, au1`; stage `us1, au1`; dev `us1`.
+
+## Make logs
+
+### Using the wizard a.k.a `wizard.py`
 
 Interactive: it asks for the credentials, environment, region, what to
 generate and how many.
@@ -58,95 +67,82 @@ generate and how many.
 python3 wizard.py
 ```
 
-Unattended: the credentials go in environment variables, and you pass their
-*names*, never the values.
+### Unattended
+
+The credentials go in environment variables, and you pass their *names*, never the values.
 
 ```bash
 export VOICEGEN_SID_STAGE=ACxxxxxxxx
 export VOICEGEN_TOKEN_STAGE=xxxxxxxx
-python3 wizard.py --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE \
-  --tier stage --categories calls,recordings_transcriptions,conferences \
-  --calls 2-5 --recordings-transcriptions 2 --conferences 2 --mode run
+python3 wizard.py \
+  --sid-env VOICEGEN_SID_STAGE \
+  --token-env VOICEGEN_TOKEN_STAGE \
+  --tier stage \
+  --categories calls,recordings_transcriptions,conferences \
+  --calls 2-5 \
+  --recordings-transcriptions 2 \
+  --conferences 2 \
+  --mode run
 ```
 
-Prod, AU1, routing the numbers to au1 first (see below). Prod always needs
+Prod, AU1, routing the numbers to au1 first (see note at the beginning of the file). Prod always needs
 `--confirm-prod` and is capped at 30 per category:
 
 ```bash
 export VOICEGEN_SID_PROD_AU1=ACxxxxxxxx
 export VOICEGEN_TOKEN_PROD_AU1=xxxxxxxx   # the account's au1 Auth Token
-python3 wizard.py --sid-env VOICEGEN_SID_PROD_AU1 --token-env VOICEGEN_TOKEN_PROD_AU1 \
-  --tier prod --region au1 --route-numbers \
+python3 wizard.py \
+  --sid-env VOICEGEN_SID_PROD_AU1 \
+  --token-env VOICEGEN_TOKEN_PROD_AU1 \
+  --tier prod \
+  --region au1 \
+  --route-numbers \
   --categories calls,recordings_transcriptions,conferences \
-  --calls 5 --recordings-transcriptions 3 --conferences 3 \
-  --mode run --confirm-prod
+  --calls 5 \
+  --recordings-transcriptions 3 \
+  --conferences 3 \
+  --mode run \
+  --confirm-prod
 ```
 
 Every interactive run ends by printing the unattended command that repeats it.
 
 ## `real_call_burst.py`
 
-Calls a real number you own. It asks you to confirm that number before
-dialing.
+For some call statuses, we need to call a real number. The script asks you to confirm that number before dialing, just in case.
 
-Interactive:
+### Interactive mode
 
 ```bash
 python3 real_call_burst.py
 ```
 
-A burst of 10 calls, a mix of `completed`, `busy` and `no-answer`:
+### Unattended
+
+Make a burst of 10 calls:
 
 ```bash
 python3 real_call_burst.py \
-  --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE --tier stage \
-  --to +34XXXXXXXXX --count 10 --interval 1.5 --confirm-real-number
+  --sid-env VOICEGEN_SID_STAGE \
+  --token-env VOICEGEN_TOKEN_STAGE \
+  --tier stage \
+  --to +34XXXXXXXXX \
+  --count 10 \
+  --interval 1.5 \
+  --confirm-real-number
 ```
 
-One recorded call in prod AU1. Answer it, speak after the beep, then stay
-silent. The script prints the recording and its transcription:
+One recorded call in prod AU1:
 
 ```bash
 python3 real_call_burst.py \
-  --sid-env VOICEGEN_SID_PROD_AU1 --token-env VOICEGEN_TOKEN_PROD_AU1 --tier prod --region au1 \
-  --to +34XXXXXXXXX --count 1 --record --confirm-prod --confirm-real-number
+  --sid-env VOICEGEN_SID_PROD_AU1 \
+  --token-env VOICEGEN_TOKEN_PROD_AU1 \
+  --tier prod \
+  --region au1 \
+  --to +34XXXXXXXXX \
+  --count 1 \
+  --record \
+  --confirm-prod \
+  --confirm-real-number
 ```
-
-## Logs in IE1 or AU1: route the numbers first
-
-`--region ie1` or `--region au1` (the **Data region** of an app profile) creates
-the calls in that region, so their logs show up there. Use that region's Auth
-Token; tokens are per region.
-
-The calls go between the account's own numbers, so each number also has to
-**take inbound calls in that same region**. That's its *inbound voice region*.
-A number without one is handled in us1. If it doesn't match, every call to that
-number fails with SIP 404, and no recordings, transcriptions or conferences are
-created. Moving back to us1 has the same problem in reverse: numbers routed to
-au1 or ie1 must be set back to us1.
-
-Outside us1, every run prints each number's inbound voice region and warns about
-mismatches. To fix them:
-
-- **App:** tick **Route the numbers to this data region** on the profile.
-- **Command line:** add `--route-numbers`.
-- **By hand:** set it on the number's Voice configuration in the Console.
-
-Before each run, this sets the inbound voice region of the numbers the run uses
-to the run's region, and prints each change.
-
-> **This affects other people too.** A number's inbound voice region is a single
-> setting for the whole account, not per profile or per run. Changing it moves
-> *every* inbound call to that number to the new region: real callers, other
-> tools, and teammates generating data from the same account in another region.
-> That's why the checkbox is off by default. Only tick it on accounts and numbers
-> used just for this kind of testing, and agree on the region with whoever else
-> uses them.
-
-Also outside us1:
-
-- Numbers attached to an Elastic SIP Trunk are skipped, because the trunk takes
-  their inbound calls.
-- Video is us1 only.
-
-Regions available: prod `us1, ie1, au1`; stage `us1, au1`; dev `us1, us2`.
