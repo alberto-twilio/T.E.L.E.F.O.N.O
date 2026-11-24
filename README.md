@@ -167,6 +167,21 @@ python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_ST
   generator's VoiceUrl, so every call and conference leg to them fails. Detach
   at least 2 numbers from their trunks (or use an account without trunks). In
   us1 the number list is not filtered.
+- Outside us1 the run prints each number's **inbound voice region** (read-only
+  Routes lookup). Calls between your own numbers need the *callee* to take
+  inbound calls in that region too: on prod AU1, two numbers bought that day
+  had no route, so every call to them got SIP 404 in us1, and no recordings,
+  transcriptions or conferences followed. Setting their inbound region fixed it
+  (Console: the number's Voice configuration, or the Routes API on the same
+  regional host and token):
+
+  ```bash
+  curl -X POST "https://routes.sydney.au1.twilio.com/v2/PhoneNumbers/+1XXXXXXXXXX" \
+    --data-urlencode "VoiceRegion=au1" -u "$VOICEGEN_SID_PROD_AU1:$VOICEGEN_TOKEN_PROD_AU1"
+  ```
+
+  An unset route is only reported, not an error: the stage AU1 numbers have
+  none and work.
 - Voice only for now: Video categories are refused outside us1.
 - Not the same as `--regions`, which only sets where conference audio is mixed.
 - Prod regional hosts get the same `PROD` confirmation and caps as us1.

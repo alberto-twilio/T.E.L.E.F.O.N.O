@@ -128,7 +128,11 @@ not for someone running it.
   (or `stage-*`/`dev-*`) label counts as prod, so a regional prod host can't skip the PROD check. Don't
   turn it back into an equality check. Outside us1, `split_trunk_numbers` in `wizard.py` skips numbers attached to an
   Elastic SIP Trunk (a trunk takes their inbound calls, so every leg to them
-  fails); us1 keeps the full list on purpose. Video is refused outside us1 until its
+  fails); us1 keeps the full list on purpose. It also prints each number's
+  inbound voice region (`discovery.inbound_voice_region`, read-only Routes GET):
+  two prod AU1 numbers with no route got SIP 404 on every inbound leg until
+  their VoiceRegion was set to au1. Report only, never skip or change a
+  number's route from the tool (stage AU1 numbers have no route and work). Video is refused outside us1 until its
   regional hosts are verified. `desktop/lib/args.js` mirrors `REGIONS_BY_TIER`
   as `DATA_REGIONS_BY_TIER`; a test compares them, change both. In the app the
   profile field is `dataRegion` (missing = us1), separate from the conference

@@ -241,6 +241,24 @@ def split_trunk_numbers(numbers, region):
     return usable, skipped
 
 
+def report_inbound_regions(host, account_sid, auth_token, numbers, region):
+    """Outside us1: prints where each number's inbound calls are processed.
+    Information only, nothing is skipped or changed: an unset route worked on
+    stage AU1 but gave SIP 404 on every call to two new prod AU1 numbers."""
+    mismatched = []
+    for n in numbers:
+        inbound = discovery.inbound_voice_region(host, account_sid, auth_token, n["phone"])
+        label = inbound or f"not set (processed in {discovery.DEFAULT_REGION})"
+        print(f"  {n['phone']}: inbound voice region {label}")
+        if inbound != region and not (inbound or "").startswith("unknown"):
+            mismatched.append(n["phone"])
+    if mismatched:
+        print(f"NOTE: {len(mismatched)} number(s) don't take inbound calls in {region}. If calls to them "
+              f"fail with SIP 404 (no recordings or conferences), set their inbound voice region to {region} "
+              "(Routes API: POST /v2/PhoneNumbers/<number> VoiceRegion=" + region + ", "
+              "on the same regional host and token).")
+
+
 def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase, region=discovery.DEFAULT_REGION):
     print("\nChecking for voice-capable numbers...")
     found = discovery.list_voice_numbers(host, account_sid, auth_token)
@@ -250,6 +268,8 @@ def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase, re
         print(f"WARNING: skipping {n['phone']}: it is attached to SIP trunk {n['trunk_sid']}, "
               "so its inbound calls go to the trunk and every call to it would fail. "
               "Detach it from the trunk to use it here.")
+    if region != discovery.DEFAULT_REGION:
+        report_inbound_regions(host, account_sid, auth_token, numbers, region)
     purchased_any = False
 
     if len(numbers) >= 2:

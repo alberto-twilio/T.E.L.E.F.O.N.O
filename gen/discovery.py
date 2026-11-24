@@ -116,6 +116,35 @@ def purchase_number(host, account_sid, auth_token, phone_number):
         return None, r.get("body")
     return {"phone": r["phone_number"], "sid": r["sid"]}, None
 
+def inbound_voice_region(host, account_sid, auth_token, phone):
+    """Read-only Routes lookup of where a number's INBOUND calls are processed,
+    on the same tier/region as the API host (api.sydney.au1.twilio.com ->
+    routes.sydney.au1.twilio.com). Returns the region ("au1"), None when no
+    route is set (Twilio then processes them in us1), or "unknown (...)".
+
+    Why it matters: on prod AU1, two numbers bought that day had no route, so
+    every call TO them was handed to us1 and got SIP 404 (no recordings, no
+    conferences). Setting VoiceRegion=au1 fixed it. Stage numbers with no route
+    worked, so an unset route is reported, never treated as an error.
+    """
+    import json as _json
+    import urllib.parse as _parse
+    import urllib.request as _req
+    import urllib.error as _err
+    url_host = ("routes." + host[len("api."):]) if host.startswith("api.") else "routes.twilio.com"
+    try:
+        r = _req.Request(f"https://{url_host}/v2/PhoneNumbers/{_parse.quote(phone)}", method="GET")
+        r.add_header("Authorization", build_auth_header(account_sid, auth_token))
+        with _req.urlopen(r, timeout=20) as resp:
+            return _json.loads(resp.read()).get("voice_region") or None
+    except _err.HTTPError as e:
+        if e.code == 404:
+            return None
+        return f"unknown (HTTP {e.code} from {url_host})"
+    except Exception as e:
+        return f"unknown ({e})"
+
+
 def check_compliance_profile(host, account_sid, auth_token):
     """Best-effort probe of Trust Hub's CustomerProfiles resource, so a
     missing/unapproved compliance profile can be surfaced BEFORE attempting
