@@ -20,7 +20,17 @@ const consoleUrl = (tier, sid) => {
   const base = CONSOLE_URLS[tier];
   return base && /^AC[0-9a-f]{32}$/i.test(sid || '') ? `${base}account/${sid}` : base;
 };
+// Conference media regions (<Conference region="...">), not where the data is stored.
 const REGIONS = ['us1', 'us2', 'au1', 'br1', 'ie1', 'jp1', 'sg1', 'de1', 'in1'];
+// Data region (wizard.py --region): where the calls are created and their logs stored.
+// Mirrors gen/discovery.py REGIONS_BY_TIER (a test checks they match). Auth Tokens are per region.
+const DEFAULT_DATA_REGION = 'us1';
+const DATA_REGIONS_BY_TIER = {
+  prod: ['us1', 'ie1', 'au1'],
+  stage: ['us1', 'au1'],
+  dev: ['us1', 'us2'],
+};
+const dataRegionOf = (p) => (p && p.dataRegion) || DEFAULT_DATA_REGION;
 
 const DEFAULTS = {
   calls: '10-30',
@@ -91,6 +101,9 @@ const validateProfile = (p) => {
   const errors = [];
   if (!p.name || !p.name.trim()) errors.push('Name is required.');
   if (!TIERS.includes(p.tier)) errors.push('Pick an environment (prod, stage or dev).');
+  else if (!DATA_REGIONS_BY_TIER[p.tier].includes(dataRegionOf(p))) {
+    errors.push(`Data region ${dataRegionOf(p)} is not available on ${p.tier} (available: ${DATA_REGIONS_BY_TIER[p.tier].join(', ')}).`);
+  }
   const cats = p.categories || [];
   if (cats.length === 0 && !p.videoEnabled) errors.push('Enable Voice (with at least one category) or Video.');
   if (cats.some((c) => !CATEGORIES.includes(c))) errors.push('Unknown category.');
@@ -107,7 +120,10 @@ const validateProfile = (p) => {
     if (err) errors.push(err);
   }
   if ((p.regions || []).some((r) => !REGIONS.includes(r))) errors.push('Unknown conference region.');
-  if (p.videoEnabled) errors.push(...validateVideo(p));
+  if (p.videoEnabled) {
+    if (dataRegionOf(p) !== DEFAULT_DATA_REGION) errors.push('Video is only supported in the us1 data region for now.');
+    else errors.push(...validateVideo(p));
+  }
   return errors;
 };
 
@@ -118,12 +134,16 @@ const validateCredentials = ({ sid, token }) => {
   return errors;
 };
 
-const envNames = (tier) => ({
-  sidEnv: `VOICEGEN_SID_${tier.toUpperCase()}`,
-  tokenEnv: `VOICEGEN_TOKEN_${tier.toUpperCase()}`,
-  videoKeyEnv: `VOICEGEN_VKEY_${tier.toUpperCase()}`,
-  videoSecretEnv: `VOICEGEN_VSECRET_${tier.toUpperCase()}`,
-});
+// us1 keeps the old names; another data region gets its own (its credentials differ)
+const envNames = (tier, region = DEFAULT_DATA_REGION) => {
+  const s = `${tier}${region === DEFAULT_DATA_REGION ? '' : `_${region}`}`.toUpperCase();
+  return {
+    sidEnv: `VOICEGEN_SID_${s}`,
+    tokenEnv: `VOICEGEN_TOKEN_${s}`,
+    videoKeyEnv: `VOICEGEN_VKEY_${s}`,
+    videoSecretEnv: `VOICEGEN_VSECRET_${s}`,
+  };
+};
 
 // whether a run of this profile needs a stored API key (recordings with temporary keys turned off)
 const needsVideoKey = (p) => Boolean(p.videoEnabled && p.videoRecordingsEnabled && p.videoTempKeys === false);
@@ -168,12 +188,14 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
   const errors = validateProfile(profile);
   if (errors.length) throw new Error(errors.join(' '));
 
-  const { sidEnv, tokenEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier);
+  const region = dataRegionOf(profile);
+  const { sidEnv, tokenEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier, region);
   const args = [
     '-u', wizardPath,
     '--sid-env', sidEnv,
     '--token-env', tokenEnv,
     '--tier', profile.tier,
+    ...(region !== DEFAULT_DATA_REGION ? ['--region', region] : []),
     '--categories', categoriesFor(profile).join(','),
     '--calls', String(profile.calls).trim(),
     '--call-duration', String(profile.callDuration).trim(),
@@ -184,6 +206,8 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
     '--results-path', resultsPath,
   ];
   if (profile.regions && profile.regions.length) args.push('--regions', profile.regions.join(','));
+  // stored per profile like noProdCap: rewrites the numbers' inbound voice region (account wide), never a consent flag
+  if (profile.routeNumbers) args.push('--route-numbers');
   if (profile.videoEnabled) {
     args.push('--video-rooms', String(profile.videoRooms).trim(), '--video-room-prefix', String(profile.videoPrefix).trim());
     if (profile.videoRoomTypes && profile.videoRoomTypes.length) args.push('--video-room-types', profile.videoRoomTypes.join(','));
@@ -210,6 +234,6 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
 };
 
 module.exports = {
-  TIERS, CATEGORIES, REGIONS, CONSOLE_URLS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, DEFAULTS,
+  TIERS, CATEGORIES, REGIONS, DATA_REGIONS_BY_TIER, DEFAULT_DATA_REGION, dataRegionOf, CONSOLE_URLS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, DEFAULTS,
   QUICK_TESTS, quickProfile, validateProfile, validateCredentials, envNames, needsVideoKey, categoriesFor, buildWizardArgs,
 };

@@ -114,6 +114,37 @@ not for someone running it.
   decides which host gets tried has. Don't reintroduce the try-all-three
   loop, if a new entry point needs environment info, it should ask (or
   take `--tier`), not guess.
+- **Data region (`--region`) is stated, never guessed, like the tier.**
+  `discovery.host_for(tier, region)` looks the host up in the explicit
+  `REGION_HOSTS` table and raises on anything else, never falls back to us1.
+  Keep it a table: prod is `api.<edge>.<region>.twilio.com` but stage/dev are
+  `api.<tier>-<region>.twilio.com`, and `api.sydney.au1.stage.twilio.com`
+  resolves in DNS but fails TLS (that broke every au1 save once). Only add a
+  host after it answers with Twilio's own 401 JSON, and only for a region the
+  tier really has: stage is us1 + au1 only (`api.stage-ie1` answers, but stage
+  has no IE1). The desktop shows a country flag before every profile name from
+  `dataRegion` (`REGION_FLAGS` in `renderer.js`): display only, never stored in the name. Credentials are per region.
+  `safety.is_prod()` is fail-safe on purpose: any host without a `stage`/`dev`
+  (or `stage-*`/`dev-*`) label counts as prod, so a regional prod host can't skip the PROD check. Don't
+  turn it back into an equality check. Outside us1, `split_trunk_numbers` in `wizard.py` skips numbers attached to an
+  Elastic SIP Trunk (a trunk takes their inbound calls, so every leg to them
+  fails); us1 keeps the full list on purpose. It also prints each number's
+  inbound voice region (`discovery.inbound_voice_region`, read-only Routes GET):
+  two prod AU1 numbers with no route got SIP 404 on every inbound leg until
+  their VoiceRegion was set to au1. Without opt-in it only reports, never skips a
+  number for its route (stage AU1 numbers have no route and work). Routes are
+  changed only by `--route-numbers` (desktop: the profile's "Route the numbers to
+  this data region" checkbox, field `routeNumbers`): `route_numbers` in `wizard.py`
+  sets each number the run uses to the run's region via
+  `discovery.set_inbound_voice_region`, an unset route counting as us1. It is
+  account wide, so never default it on, never imply it from another flag, and
+  never route numbers the run doesn't use. It is not a consent flag: PROD
+  confirmation still applies. Video is refused outside us1 until its
+  regional hosts are verified. `desktop/lib/args.js` mirrors `REGIONS_BY_TIER`
+  as `DATA_REGIONS_BY_TIER`; a test compares them, change both. In the app the
+  profile field is `dataRegion` (missing = us1), separate from the conference
+  `regions`; moving a stored profile to another region requires that region's
+  token (`credintent.js`). Non-us1 env var names get a `_<REGION>` suffix.
 - **`DATAGEN_ACCOUNT_SID`/`DATAGEN_ACCOUNT_TOKEN`/`DATAGEN_ENVIRONMENT`
   are a convenience layer, not a third mode.** `resolve_from_datagen_env()`
   in `gen/discovery.py` only changes *how* credentials/tier get obtained

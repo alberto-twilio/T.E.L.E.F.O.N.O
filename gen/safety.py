@@ -5,12 +5,17 @@ are enforced unconditionally, not behind a flag someone could forget.
 """
 from .core import parse_duration_token
 
-PROD_HOST = "api.twilio.com"
+PROD_HOST = "api.twilio.com"  # us1; regional prod hosts look like api.dublin.ie1.twilio.com
 PROD_MAX_PER_CATEGORY = 30
 PROD_MAX_CALL_DURATION_SECONDS = 5 * 60
 
 def is_prod(host):
-    return host == PROD_HOST
+    """Fail-safe: any host that isn't clearly stage or dev counts as prod, so
+    a regional prod host (api.dublin.ie1.twilio.com) or a host added later
+    (stage/dev regions look like api.stage-au1.twilio.com)
+    can never slip past the PROD confirmation and caps."""
+    labels = host.lower().split(".")
+    return not any(l in ("stage", "dev") or l.startswith(("stage-", "dev-")) for l in labels)
 
 def confirm_prod(account_info):
     name = account_info.get("friendly_name", "<unknown>")

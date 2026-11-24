@@ -141,6 +141,142 @@ Participants are spread over the rooms and hold for a random time in
 created for the run and deleted after (also on failure); or pass your own with
 `--video-key-env` / `--video-secret-env` (env var NAMES, never values).
 
+### Data region (logs outside us1)
+
+`--region` (default `us1`) picks the Twilio Region the data is created in, so
+its call/recording/conference logs are stored, and show up, in that region:
+
+```bash
+export VOICEGEN_SID_STAGE_AU1=...
+export VOICEGEN_TOKEN_STAGE_AU1=...   # the account's au1 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_STAGE_AU1 \
+  --tier stage --region au1 --categories calls --calls 2 --mode run
+```
+
+- Available: prod `us1, ie1, au1`; stage `us1, au1` (stage has no IE1); dev `us1, us2`. Prod
+  hosts look like `api.dublin.ie1.twilio.com`, stage/dev like
+  `api.stage-au1.twilio.com`. Each one was checked to answer as the Twilio API from
+  the VPN, which doesn't mean every Voice feature works there: try a stage
+  subaccount with small counts first.
+- Auth Tokens are per region: a us1 token gets a 401 from ie1. Interactively the
+  wizard asks for the region after the environment (or reads `DATAGEN_REGION`).
+- Calls between your own numbers: the inbound leg is processed in each number's
+  inbound processing region (us1 by default), so that leg may still log in us1.
+- Numbers attached to an Elastic SIP Trunk are skipped outside us1, with a
+  `WARNING: skipping ...` line: the trunk takes their inbound calls, not the
+  generator's VoiceUrl, so every call and conference leg to them fails. Detach
+  at least 2 numbers from their trunks (or use an account without trunks). In
+  us1 the number list is not filtered.
+- Outside us1 the run prints each number's **inbound voice region** (read-only
+  Routes lookup). Calls between your own numbers need the *callee* to take
+  inbound calls in that region too: on prod AU1, two numbers bought that day
+  had no route, so every call to them got SIP 404 in us1, and no recordings,
+  transcriptions or conferences followed. Setting their inbound region fixed it
+  (Console: the number's Voice configuration, or the Routes API on the same
+  regional host and token):
+
+  ```bash
+  curl -X POST "https://routes.sydney.au1.twilio.com/v2/PhoneNumbers/+1XXXXXXXXXX" \
+    --data-urlencode "VoiceRegion=au1" -u "$VOICEGEN_SID_PROD_AU1:$VOICEGEN_TOKEN_PROD_AU1"
+  ```
+
+  An unset route is only reported, not an error: the stage AU1 numbers have
+  none and work.
+- `--route-numbers` does that for you: before generating, it sets the inbound
+  voice region of every number the run uses to `--region` where it differs
+  (an unset route counts as us1) and prints each change as old -> new. It also
+  works in us1, to bring numbers back after a profile moved regions. The route
+  is per number and account wide, so real callers to those numbers are handled
+  there too. Interactive runs outside us1 ask; in the desktop app it's the
+  profile's "Route the numbers to this data region" checkbox (off by default).
+- Voice only for now: Video categories are refused outside us1.
+- Not the same as `--regions`, which only sets where conference audio is mixed.
+- Prod regional hosts get the same `PROD` confirmation and caps as us1.
+
+#### Examples per region
+
+Each region needs that region's Auth Token for the account. The env var names
+below are what the wizard and the desktop app use by default (`_<REGION>`
+suffix outside us1), but any names work.
+
+Stage, AU1: a small first batch of every Voice category:
+
+```bash
+export VOICEGEN_SID_STAGE_AU1=...
+export VOICEGEN_TOKEN_STAGE_AU1=...   # the account's au1 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_STAGE_AU1 \
+  --tier stage --region au1 \
+  --categories calls,recordings_transcriptions,conferences \
+  --calls 2-5 --call-duration 10s-1m --recordings-transcriptions 2 --conferences 2 \
+  --mode run
+```
+
+Prod, IE1: calls only (prod still needs `--confirm-prod`, and the caps apply):
+
+```bash
+export VOICEGEN_SID_PROD_IE1=...
+export VOICEGEN_TOKEN_PROD_IE1=...    # the account's ie1 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_PROD_IE1 --token-env VOICEGEN_TOKEN_PROD_IE1 \
+  --tier prod --region ie1 \
+  --categories calls --calls 5-10 --call-duration 30s-2m \
+  --mode run --confirm-prod
+```
+
+Prod, AU1: conferences whose logs land in au1 and whose audio is also mixed in au1:
+
+```bash
+export VOICEGEN_SID_PROD_AU1=...
+export VOICEGEN_TOKEN_PROD_AU1=...    # the account's au1 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_PROD_AU1 --token-env VOICEGEN_TOKEN_PROD_AU1 \
+  --tier prod --region au1 \
+  --categories conferences --conferences 3 --regions au1 \
+  --mode run --confirm-prod
+```
+
+Dev, US2:
+
+```bash
+export VOICEGEN_SID_DEV_US2=...
+export VOICEGEN_TOKEN_DEV_US2=...     # the account's us2 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_DEV_US2 --token-env VOICEGEN_TOKEN_DEV_US2 \
+  --tier dev --region us2 --categories calls --calls 3 --mode run
+```
+
+Save a standalone script for a region (the regional host is written into it,
+the credentials are not), then run it later from cron/launchd:
+
+```bash
+python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_STAGE_AU1 \
+  --tier stage --region au1 --categories calls --calls 10-30 \
+  --mode save --out voice_batch_stage_au1.py
+```
+
+```bash
+VOICEGEN_SID_STAGE_AU1=... VOICEGEN_TOKEN_STAGE_AU1=... python3 voice_batch_stage_au1.py
+```
+
+Interactive, skipping the credential prompts with the `DATAGEN_*` variables
+(`DATAGEN_REGION` is optional and defaults to us1):
+
+```bash
+export DATAGEN_ACCOUNT_SID=...
+export DATAGEN_ACCOUNT_TOKEN=...      # the au1 Auth Token
+export DATAGEN_ENVIRONMENT=stage
+export DATAGEN_REGION=au1
+python3 wizard.py
+```
+
+Check which region a token belongs to without generating anything (one read-only GET):
+
+```bash
+python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_STAGE_AU1 \
+  --tier stage --region au1 --describe-account
+```
+
+In the desktop app: edit or create a profile, pick the **Data region** next to
+Environment, and enter that region's Auth Token. The flag before the profile
+name shows the region it runs in.
+
 `--tier` is required in unattended mode, same reasoning as everywhere
 else: there's no interactive menu to fall back on, so it must be stated
 explicitly. A wrong tier fails cleanly (wrong host for these credentials
@@ -244,7 +380,7 @@ or unattended:
 ```bash
 python3 real_call_burst.py \
   --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE --tier stage \
-  --to +34663053910 --count 10 --interval 1.5 --confirm-real-number
+  --to +34XXXXXXXXX --count 10 --interval 1.5 --confirm-real-number
 ```
 
 Every path requires an explicit, un-skippable confirmation naming the
@@ -254,6 +390,25 @@ or quiet mode. Verified in practice: a burst of calls a couple seconds
 apart against a real phone reliably produces a natural mix of
 `completed`, `busy` (whenever the line's already occupied by a previous
 call in the burst), and `no-answer`.
+
+### Recording real calls (`--record`)
+
+`--record` swaps the passage + pause for a short prompt and a
+`<Record transcribe="true">` (the same verb the generator's recordings use),
+so each answered call leaves a recording and a transcription. Only what the
+person on the phone says is recorded: answer, speak for a few seconds after
+the beep, then stay silent (5s of silence ends it, `--record-max` caps the
+length, default 120s). After the call the script waits for the transcription
+and prints the recording/transcription SIDs and statuses.
+
+It also takes `--region`, like `wizard.py`, so the call and its recording
+land in that region's logs:
+
+```bash
+python3 real_call_burst.py \
+  --sid-env VOICEGEN_SID_PROD_AU1 --token-env VOICEGEN_TOKEN_PROD_AU1 --tier prod --region au1 \
+  --to +34XXXXXXXXX --count 1 --record --confirm-prod --confirm-real-number
+```
 
 ## The standalone script
 

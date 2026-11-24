@@ -2,14 +2,15 @@
 // subaccount: `wizard.py --describe-account` does one read-only GET and prints
 // one JSON line. Credentials reach the child only as env vars, like a run.
 const { spawn } = require('node:child_process');
-const { envNames } = require('./args');
+const { envNames, DEFAULT_DATA_REGION } = require('./args');
 
 const KINDS = ['main', 'sub', 'unknown'];
 
-const describeAccount = ({ pythonPath, wizardPath, tier, creds, timeoutMs = 45000 }) => new Promise((resolve, reject) => {
+const describeAccount = ({ pythonPath, wizardPath, tier, region = DEFAULT_DATA_REGION, creds, timeoutMs = 45000 }) => new Promise((resolve, reject) => {
   if (!pythonPath) return reject(new Error('python3 was not found on this machine.'));
-  const { sidEnv, tokenEnv } = envNames(tier);
-  const child = spawn(pythonPath, ['-u', wizardPath, '--sid-env', sidEnv, '--token-env', tokenEnv, '--tier', tier, '--describe-account'], {
+  const { sidEnv, tokenEnv } = envNames(tier, region);
+  const regionArgs = region !== DEFAULT_DATA_REGION ? ['--region', region] : [];
+  const child = spawn(pythonPath, ['-u', wizardPath, '--sid-env', sidEnv, '--token-env', tokenEnv, '--tier', tier, ...regionArgs, '--describe-account'], {
     env: { ...process.env, [sidEnv]: creds.sid, [tokenEnv]: creds.token, PYTHONUNBUFFERED: '1' },
   });
   let out = '';
@@ -20,7 +21,7 @@ const describeAccount = ({ pythonPath, wizardPath, tier, creds, timeoutMs = 4500
   child.on('error', (e) => { clearTimeout(timer); reject(new Error(`Could not start python: ${e.message}`)); });
   child.on('close', (code) => {
     clearTimeout(timer);
-    const fail = () => reject(new Error(`Could not verify the account on ${tier}: ${err.trim().split('\n').pop() || 'no response (check the VPN and the environment).'}`));
+    const fail = () => reject(new Error(`Could not verify the account on ${tier}${region !== DEFAULT_DATA_REGION ? `/${region}` : ''}: ${err.trim().split('\n').pop() || 'no response (check the VPN and the environment).'}`));
     if (code !== 0) return fail();
     try {
       const info = JSON.parse(out.trim().split('\n').pop());

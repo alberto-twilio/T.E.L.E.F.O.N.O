@@ -59,12 +59,23 @@ const countCell = (r, cat, finalValue) => {
 const hasVoice = (p) => p.categories.length > 0;
 const kindPills = (p) => h('div', { class: 'pills' },
   tierBadge(p.tier),
+  regionBadge(p),
   kindBadge(p),
   hasVoice(p) && h('span', { class: 'pill voice', title: 'Generates Voice data' }, 'Voice'),
   p.videoEnabled && h('span', { class: 'pill video', title: 'Generates Video rooms' }, 'Video'));
 const runnableNow = (p) => p.credentialsStored;
 // environment and account type use the same pill as Voice/Video
 const tierBadge = (tier) => h('span', { class: `pill tier ${tier}`, title: `${tier} environment` }, tier);
+// data region (where the logs are stored); only shown when it isn't the default us1
+const dataRegion = (p) => (p && p.dataRegion) || 'us1';
+// country of the data region, shown before every profile name (display only, never part of the stored name)
+const REGION_FLAGS = { us1: '🇺🇸', us2: '🇺🇸', ie1: '🇮🇪', au1: '🇦🇺' };
+const REGION_COUNTRIES = { us1: 'United States', us2: 'United States', ie1: 'Ireland', au1: 'Australia' };
+const flagEl = (p) => h('span', { class: 'flag', role: 'img', 'aria-label': REGION_COUNTRIES[dataRegion(p)] || dataRegion(p),
+  title: `${REGION_COUNTRIES[dataRegion(p)] || dataRegion(p)} (${dataRegion(p)} data region)` }, REGION_FLAGS[dataRegion(p)] || '🏳️');
+const flagged = (p, name) => [flagEl(p), ' ', name];
+const regionBadge = (p) => (dataRegion(p) === 'us1' ? null
+  : h('span', { class: 'pill region', title: `Data created in and logs stored in the ${dataRegion(p)} region` }, dataRegion(p)));
 const kindBadge = (p) => {
   const label = { main: 'Parent', sub: 'Subaccount' }[p.accountKind];
   return label ? h('span', { class: `pill kind ${p.accountKind}`, title: p.accountName ? `${label} account: ${p.accountName}` : `${label} account` }, label) : null;
@@ -138,7 +149,7 @@ const renderSidebar = () => {
           },
         }),
         h('div', { class: 'info' },
-          h('div', { class: 'name' }, p.name),
+          h('div', { class: 'name' }, ...flagged(p, p.name)),
           kindPills(p)),
         p.credentialsStored ? null : h('span', { class: 'badge warn', title: 'Credentials missing from the Keychain' }, 'no creds'),
         runButton(p, { label: 'Run', small: true, onClick: (e) => { e.stopPropagation(); requestRun(p); } }))));
@@ -194,12 +205,13 @@ const profileView = (p) => {
   const runs = state.runs.filter((r) => r.profileId === p.id);
   const recs = p.videoEnabled && p.videoRecordingsEnabled;
   const groups = [
-    { items: [['Account SID', h('div', { class: 'row' }, accountSid(p), consoleLink(p)), true], ['Environment', tierBadge(p.tier)]] },
+    { items: [['Account SID', h('div', { class: 'row' }, accountSid(p), consoleLink(p)), true], ['Environment', tierBadge(p.tier)], ['Data region', dataRegion(p)]] },
     { title: 'Voice', items: [
       ['Calls', p.categories.includes('calls') ? `${p.calls}  (duration ${p.callDuration})` : 'off'],
       ['Recordings / transcriptions', p.categories.includes('recordings_transcriptions') ? p.recordingsTranscriptions : 'off'],
       ['Conferences', p.categories.includes('conferences')
         ? `${p.conferences}${p.regions && p.regions.length ? `  (${p.regions.join(', ')})` : ''}` : 'off'],
+      ['Number routing', p.routeNumbers ? `inbound voice set to ${dataRegion(p)} before each run` : 'left as is'],
     ] },
     { title: 'Video', items: [
       ['Rooms', p.videoEnabled ? p.videoRooms : 'off'],
@@ -211,7 +223,7 @@ const profileView = (p) => {
 
   return h('div', {},
     h('div', { class: 'row spread' },
-      h('div', { class: 'row' }, h('h2', {}, p.name), tierBadge(p.tier), kindBadge(p), runningRuns(p.id).length > 0 && h('span', { class: 'running-tag' }, spinner(), `${runningRuns(p.id).length} running`)),
+      h('div', { class: 'row' }, h('h2', {}, ...flagged(p, p.name)), tierBadge(p.tier), regionBadge(p), kindBadge(p), runningRuns(p.id).length > 0 && h('span', { class: 'running-tag' }, spinner(), `${runningRuns(p.id).length} running`)),
       h('div', { class: 'row' },
         runButton(p, { label: 'Run now', onClick: () => requestRun(p) }),
         h('button', { onClick: () => startEdit(p) }, 'Edit'),
@@ -295,8 +307,9 @@ const runView = () => {
   return h('div', { class: 'run-view' },
     h('div', { class: 'row spread' },
       h('div', { class: 'row' },
-        h('h2', {}, run ? run.profileName : 'Run'),
+        h('h2', {}, ...(run ? flagged(run, run.profileName) : ['Run'])),
         run && tierBadge(run.tier),
+        run && regionBadge(run),
         run && h('span', { class: `status-${run.status}` }, live ? h('span', { class: 'row gap-6' }, spinner(), 'running') : statusLabel(run))),
       
       h('div', { class: 'row' },
@@ -322,7 +335,7 @@ const editView = (existing) => {
   const D = state.info.DEFAULTS;
   const p = existing || {
     name: '', tier: 'stage', categories: [...state.info.CATEGORIES], calls: D.calls, callDuration: D.callDuration,
-    recordingsTranscriptions: D.recordingsTranscriptions, conferences: D.conferences, regions: [], noProdCap: false,
+    recordingsTranscriptions: D.recordingsTranscriptions, conferences: D.conferences, regions: [], noProdCap: false, routeNumbers: false,
     videoEnabled: false,
   };
   const V = (k) => (p[k] != null ? p[k] : D[k]);
@@ -333,6 +346,41 @@ const editView = (existing) => {
   const customize = (...children) => h('details', { class: 'customize' }, h('summary', {}, 'Customize'), ...children);
 
   const tier = h('select', { id: 'f-tier' }, state.info.TIERS.map((t) => h('option', { value: t, selected: t === p.tier }, t)));
+  // Data region: where calls are created and their logs stored. Options depend on the environment.
+  const regionSelect = h('select', { id: 'f-data-region' });
+  const fillRegions = (keep) => {
+    const options = state.info.DATA_REGIONS_BY_TIER[tier.value] || ['us1'];
+    const pick = options.includes(keep) ? keep : options[0];
+    regionSelect.replaceChildren(...options.map((r) => h('option', { value: r, selected: r === pick }, `${REGION_FLAGS[r] || ''} ${r}`.trim())));
+    regionSelect.disabled = options.length < 2;
+  };
+  fillRegions(dataRegion(p));
+  tier.addEventListener('change', () => fillRegions(regionSelect.value));
+  const regionHint = h('div', { class: 'hint', id: 'region-hint' });
+  const syncRegionHint = () => {
+    const r = regionSelect.value;
+    const moved = existing && p.credentialsStored && r !== dataRegion(p);
+    regionHint.textContent = (r === 'us1' ? 'Where calls are created and their logs stored. us1 is the default.'
+      : `Logs land in ${r}. Auth Tokens are per region: use this account's ${r} token. Voice only, Video stays in us1.`)
+      + (moved ? ` Changing the region needs the ${r} Auth Token below.` : '');
+  };
+  regionSelect.addEventListener('change', syncRegionHint);
+  tier.addEventListener('change', syncRegionHint);
+  queueMicrotask(syncRegionHint);
+  const routeHint = h('div', { class: 'hint' });
+  const routeWrap = h('div', { id: 'route-wrap' },
+    h('label', { class: 'check' },
+      h('input', { type: 'checkbox', id: 'f-route', checked: Boolean(p.routeNumbers) }),
+      'Route the numbers to this data region'),
+    routeHint);
+  const syncRouteHint = () => {
+    routeHint.textContent = `Before each run, sets the inbound voice region of the numbers it uses to ${regionSelect.value} where it differs. `
+      + 'Without it, calls to a number routed elsewhere fail with SIP 404 (no recordings or conferences). The route is per number, for the whole account.';
+  };
+  regionSelect.addEventListener('change', syncRouteHint);
+  tier.addEventListener('change', syncRouteHint);
+  queueMicrotask(syncRouteHint);
+
   const checks = (name, all, chosen, labels = {}) =>
     h('div', { class: 'row' }, all.map((v) =>
       h('label', { class: 'check' }, h('input', { type: 'checkbox', name, value: v, checked: chosen.includes(v) }), labels[v] || v)));
@@ -354,6 +402,8 @@ const editView = (existing) => {
   if (sidLocked) tokenInput.setAttribute('placeholder', '*'.repeat(32));
 
   const errorBox = h('ul', { class: 'errors', id: 'form-errors' });
+  // a copy next to the Save button: the form is long and the box at the bottom is easy to miss
+  const topErrors = h('ul', { class: 'errors', id: 'form-errors-top', role: 'alert' });
   const noCap = h('div', { id: 'nocap-wrap' },
     h('label', { class: 'check' },
       h('input', { type: 'checkbox', id: 'f-nocap', checked: Boolean(p.noProdCap) }),
@@ -394,7 +444,8 @@ const editView = (existing) => {
         field('Call duration', voiceInputs.calls[1], 'Range like 1s-3m. Applies to completed calls.'),
         field('Recordings / transcriptions', voiceInputs.recordings_transcriptions[0]),
         field('Conferences', voiceInputs.conferences[0])),
-      h('div', { class: 'mt-12' }, h('label', {}, 'Conference regions (optional)'), regionBoxes)));
+      h('div', { class: 'mt-12' }, h('label', {}, 'Conference media regions (optional)'), regionBoxes,
+        h('div', { class: 'hint' }, 'Only where the conference audio is mixed. The logs stay in the data region.'))));
 
   const videoOn = h('input', { type: 'checkbox', id: 'f-video-on', checked: Boolean(p.videoEnabled) });
   const recOn = h('input', { type: 'checkbox', id: 'f-video-rec-on', checked: p.videoRecordingsEnabled === true });
@@ -421,6 +472,9 @@ const editView = (existing) => {
   const videoNote = h('div', { class: 'hint', id: 'video-note' });
   const syncVideo = () => {
     const prod = tier.value === 'prod';
+    const us1 = regionSelect.value === 'us1';
+    if (!us1) videoOn.checked = false;
+    videoOn.disabled = !us1;
     const on = videoOn.checked;
     const rec = on && recOn.checked;
     recOn.disabled = !on;
@@ -430,10 +484,11 @@ const editView = (existing) => {
     for (const i of [videoText.recRooms, videoText.participants, videoText.hold]) i.disabled = !rec;
     keyFields.style.display = rec && !tempKeys.checked ? '' : 'none';
     for (const i of [videoText.keySid, videoText.keySecret]) i.disabled = !(rec && !tempKeys.checked);
-    videoNote.textContent = (prod ? 'On prod, each Video category is capped at 30 per run unless the profile lifts the caps, and every run asks for PROD confirmation. ' : '')
+    videoNote.textContent = (!us1 ? `Video is only supported in the us1 data region; this profile uses ${regionSelect.value}. ` : '') + (prod ? 'On prod, each Video category is capped at 30 per run unless the profile lifts the caps, and every run asks for PROD confirmation. ' : '')
       + 'Creates empty rooms, and optionally rooms where participants join a headless browser so Twilio records them (needs Playwright).';
   };
   tier.addEventListener('change', syncVideo);
+  regionSelect.addEventListener('change', syncVideo);
   videoOn.addEventListener('change', syncVideo);
   recOn.addEventListener('change', () => {
     syncVideo();
@@ -474,7 +529,9 @@ const editView = (existing) => {
   const form = h('div', { class: 'card mt-16' },
     h('div', { class: 'grid' },
       field('Name', text('f-name', p.name)),
-      field('Environment', tier, 'The environment these credentials belong to. Never guessed.')),
+      field('Environment', tier, 'The environment these credentials belong to. Never guessed.'),
+      h('div', {}, h('label', {}, 'Data region'), regionSelect, regionHint)),
+    routeWrap,
     noCap,
     h('h3', {}, existing ? 'Credentials (stored in the macOS Keychain)' : 'Credentials (stored in the macOS Keychain)'),
     h('div', { class: 'grid' },
@@ -490,10 +547,10 @@ const editView = (existing) => {
     return {
       profile: {
         ...(existing ? { id: existing.id } : {}),
-        name: val('#f-name').trim(), tier: tier.value, categories: voiceOn.checked ? checked('categories') : [],
+        name: val('#f-name').trim(), tier: tier.value, dataRegion: regionSelect.value, categories: voiceOn.checked ? checked('categories') : [],
         calls: val('#f-calls').trim(), callDuration: val('#f-duration').trim(),
         recordingsTranscriptions: val('#f-rec').trim(), conferences: val('#f-conf').trim(),
-        regions: checked('regions'), noProdCap: tier.value === 'prod' && $('#f-nocap').checked,
+        regions: checked('regions'), noProdCap: tier.value === 'prod' && $('#f-nocap').checked, routeNumbers: $('#f-route').checked,
         videoEnabled: videoOn.checked,
         videoRooms: val('#f-video-rooms').trim(), videoRoomTypes: checked('videoRoomTypes'), videoAudioOnly: val('#f-video-audioonly'),
         videoPrefix: val('#f-video-prefix').trim(),
@@ -507,8 +564,12 @@ const editView = (existing) => {
     };
   };
 
+  const saveBtn = h('button', { class: 'primary', onClick: () => save() }, 'Save');
   const save = async () => {
     errorBox.replaceChildren();
+    topErrors.replaceChildren();
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…'; // verifying the account on Twilio can take a few seconds
     try {
       const saved = await api.saveProfile(collect());
       delete sidCache[saved.id]; // SID may have changed
@@ -516,7 +577,13 @@ const editView = (existing) => {
       selectProfile(saved.id);
     } catch (e) {
       const msg = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-      errorBox.replaceChildren(...msg.split(/(?<=\.)\s+/).map((m) => h('li', {}, m)));
+      const items = () => msg.split(/(?<=\.)\s+/).map((m) => h('li', {}, m));
+      errorBox.replaceChildren(...items());
+      topErrors.replaceChildren(h('li', {}, 'Not saved:'), ...items());
+      topErrors.scrollIntoView({ block: 'nearest' });
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
     }
   };
 
@@ -524,7 +591,8 @@ const editView = (existing) => {
     h('div', { class: 'row spread' }, h('h2', {}, existing ? `Edit ${existing.name}` : 'New profile'),
       h('div', { class: 'row' },
         h('button', { onClick: () => { state.view = selected() ? 'profile' : 'empty'; renderMain(); } }, 'Cancel'),
-        h('button', { class: 'primary', onClick: save }, 'Save'))),
+        saveBtn)),
+    topErrors,
     form);
 };
 
@@ -616,7 +684,7 @@ const requestRunAll = () => {
     `Run ${targets.length}`);
   const content = [
     h('h2', {}, `Run ${usingSelection ? 'the ' : ''}${targets.length} ${usingSelection ? 'selected ' : ''}profile${targets.length > 1 ? 's' : ''} at once?`),
-    h('ul', { class: 'run-all-list' }, targets.map((p) => h('li', {}, p.name, h('span', { class: `badge ${p.tier} tag` }, p.tier)))),
+    h('ul', { class: 'run-all-list' }, targets.map((p) => h('li', {}, ...flagged(p, p.name), h('span', { class: `badge ${p.tier} tag` }, p.tier)))),
     skipped.length ? h('p', { class: 'muted small' }, `Skipped (no credentials): ${skipped.map((p) => p.name).join(', ')}`) : null,
   ];
   let input = null;
