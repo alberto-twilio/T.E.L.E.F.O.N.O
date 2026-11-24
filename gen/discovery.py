@@ -16,9 +16,34 @@ HOST_BY_TIER = {
 }
 TIERS = list(HOST_BY_TIER)
 
-DATAGEN_SID_VAR = "DATAGEN_ACCOUNT_SID"
-DATAGEN_TOKEN_VAR = "DATAGEN_ACCOUNT_TOKEN"
-DATAGEN_TIER_VAR = "DATAGEN_ENVIRONMENT"
+# Twilio Regions: the region in the API hostname decides where a request is
+# processed and where its data (call/recording/conference logs) is stored.
+# Explicit table, not a pattern: prod uses api.<edge>.<region>.twilio.com but
+# stage/dev use api.<tier>-<region>.twilio.com (their certificates only cover
+# *.stage-au1.twilio.com etc.). Every host below answered with Twilio's own
+# 401 "No credentials provided" from the VPN (Nov 2026); hosts that resolve but
+# fail TLS (api.sydney.au1.stage.twilio.com) are deliberately left out.
+# Answering is not proof every Voice feature works there: try small counts first.
+# Credentials are region-specific: a us1 Auth Token 401s against ie1.
+DEFAULT_REGION = "us1"
+REGION_HOSTS = {
+    "prod": {"us1": "api.twilio.com", "ie1": "api.dublin.ie1.twilio.com", "au1": "api.sydney.au1.twilio.com"},
+    # stage has au1 only besides us1 (api.stage-ie1.twilio.com answers, but stage has no IE1 region)
+    "stage": {"us1": "api.stage.twilio.com", "au1": "api.stage-au1.twilio.com"},
+    "dev": {"us1": "api.dev.twilio.com", "us2": "api.dev-us2.twilio.com"},
+}
+REGIONS_BY_TIER = {tier: list(hosts) for tier, hosts in REGION_HOSTS.items()}
+DATA_REGIONS = ["us1", "ie1", "au1", "us2"]
+DATAGEN_REGION_VAR = "DATAGEN_REGION"
+
+
+def host_for(tier, region=DEFAULT_REGION):
+    """API host for a tier + data region. Raises ValueError on a combination
+    that has no host, so a typo can never silently fall back to us1."""
+    if region not in REGION_HOSTS.get(tier, {}):
+        raise ValueError(f"Region {region} is not available on {tier}. "
+                         f"Available: {', '.join(REGIONS_BY_TIER.get(tier, []))}.")
+    return REGION_HOSTS[tier][region]
 
 
 def resolve_from_datagen_env():
@@ -34,25 +59,32 @@ def resolve_from_datagen_env():
     return None
 
 
+def datagen_region():
+    """Optional DATAGEN_REGION next to the three vars above; us1 when unset."""
+    return os.environ.get(DATAGEN_REGION_VAR) or DEFAULT_REGION
+
+
 def print_datagen_env_template():
     """Three lines, ready to paste into any env file, keys only."""
     print(f"export {DATAGEN_SID_VAR}=")
     print(f"export {DATAGEN_TOKEN_VAR}=")
     print(f"export {DATAGEN_TIER_VAR}=")
 
-def confirm_environment(account_sid, auth_token, tier):
+def confirm_environment(account_sid, auth_token, tier, region=DEFAULT_REGION):
     """The caller states which environment these credentials belong to
     (never guessed). This does exactly one GET, against that tier's host,
     to confirm the account actually exists/authenticates there. A wrong
     host reliably 401s, per hard-won experience, so a failure here means
     either the credentials or the chosen tier is wrong, not necessarily
     which one.
-    Returns (host, tier, account_info) or (None, tier, None)."""
-    host = HOST_BY_TIER[tier]
+    The same goes for the region: the token must be the one created for it.
+    Returns (host, tier, account_info), or (None, tier, error) where error is
+    the failed request ({"status": 401 or None, "body": ...}) for the message."""
+    host = host_for(tier, region)
     auth_header = build_auth_header(account_sid, auth_token)
     info = request(host, account_sid, auth_header, "GET", ".json")
     if info.get("error"):
-        return None, tier, None
+        return None, tier, info
     return host, tier, info
 
 def list_voice_numbers(host, account_sid, auth_token):

@@ -187,3 +187,39 @@ test('AudioOnly flag for empty rooms: sent only when not automatic, validated', 
   }
   assert.match(validateProfile({ ...p, videoAudioOnly: 'maybe' }).join(' '), /AudioOnly/);
 });
+
+test('data region: us1 adds nothing, another region adds --region and its own env var names', () => {
+  assert.ok(!buildWizardArgs(base(), opts).includes('--region'));
+  const args = buildWizardArgs({ ...base(), dataRegion: 'au1' }, opts);
+  assert.equal(args[args.indexOf('--region') + 1], 'au1');
+  assert.equal(args[args.indexOf('--sid-env') + 1], 'VOICEGEN_SID_STAGE_AU1');
+  assert.equal(args[args.indexOf('--token-env') + 1], 'VOICEGEN_TOKEN_STAGE_AU1');
+  assert.equal(envNames('prod', 'au1').tokenEnv, 'VOICEGEN_TOKEN_PROD_AU1');
+  assert.deepEqual(envNames('prod', 'us1'), envNames('prod'));
+});
+
+test('data region on prod still needs the per-run PROD confirmation', () => {
+  const p = { ...base(), tier: 'prod', dataRegion: 'ie1' };
+  assert.throws(() => buildWizardArgs(p, opts), /confirmation/);
+  assert.ok(buildWizardArgs(p, { ...opts, confirmProd: true }).includes('--confirm-prod'));
+});
+
+test('data region must exist on the tier, and Video stays in us1', () => {
+  assert.deepEqual(validateProfile({ ...base(), dataRegion: 'au1' }), []);
+  assert.deepEqual(validateProfile({ ...base(), tier: 'dev', dataRegion: 'us2' }), []);
+  assert.match(validateProfile({ ...base(), tier: 'dev', dataRegion: 'ie1' }).join(' '), /not available on dev/);
+  assert.match(validateProfile({ ...base(), dataRegion: 'jp1' }).join(' '), /not available on stage/);
+  assert.match(validateProfile({ ...base(), dataRegion: 'ie1' }).join(' '), /not available on stage/); // stage has no IE1
+  assert.deepEqual(validateProfile({ ...base(), tier: 'prod', dataRegion: 'ie1' }), []);
+  assert.match(validateProfile({ ...base(), dataRegion: 'au1', videoEnabled: true, videoRooms: '1', videoPrefix: 'x' }).join(' '), /us1/);
+  assert.deepEqual(validateProfile({ ...base(), dataRegion: undefined }), []); // old profiles default to us1
+});
+
+test('the region table matches gen/discovery.py', () => {
+  const { execFileSync } = require('node:child_process');
+  const path = require('node:path');
+  const { DATA_REGIONS_BY_TIER } = require('../lib/args');
+  const out = execFileSync('python3', ['-c', 'import json,sys; sys.path.insert(0, sys.argv[1]); from gen import discovery; print(json.dumps(discovery.REGIONS_BY_TIER))',
+    path.join(__dirname, '..', '..')], { encoding: 'utf8' });
+  assert.deepEqual(JSON.parse(out), DATA_REGIONS_BY_TIER);
+});

@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { buildWizardArgs, envNames, needsVideoKey, quickProfile, QUICK_TESTS } = require('./args');
+const { buildWizardArgs, envNames, dataRegionOf, needsVideoKey, quickProfile, QUICK_TESTS } = require('./args');
 const { createProgress, expectedCounts, percent } = require('./progress');
 
 const summarize = (results) => {
@@ -56,7 +56,7 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
     const id = crypto.randomUUID();
     const paths = store.paths(id);
     const args = buildWizardArgs(profile, { wizardPath, resultsPath: paths.results, confirmProd });
-    const { sidEnv, tokenEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier);
+    const { sidEnv, tokenEnv, videoKeyEnv, videoSecretEnv } = envNames(profile.tier, dataRegionOf(profile));
     const videoKey = needsVideoKey(profile) ? await keychain.getCredentials(`${profile.id}:videokey`) : null;
     if (needsVideoKey(profile) && !videoKey) throw new Error('This profile needs a Video API key but none is stored. Edit it and enter one, or use temporary keys.');
 
@@ -65,6 +65,7 @@ const createRunner = ({ store, keychain, pythonPath, wizardPath, send }) => {
       profileId: profile.id,
       profileName: profile.name,
       tier: profile.tier,
+      dataRegion: dataRegionOf(profile),
       startedAt: new Date().toISOString(),
       finishedAt: null,
       status: 'running',

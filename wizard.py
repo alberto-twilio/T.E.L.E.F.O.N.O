@@ -21,6 +21,11 @@ Two modes, same code path:
   pick it (interactively, or via --tier), and the script does exactly
   one request to confirm the account actually exists there.
 
+  --region (default us1) picks the Twilio Region the data is processed and
+  stored in (e.g. ie1 -> api.dublin.ie1.twilio.com), so the logs show up in
+  that region. Credentials are per region: pass that region's Auth Token.
+  Not the same as --regions, which only sets the conference media region.
+
   Unattended mode is enabled by passing --sid-env (the credential VALUES
   still come from the environment, never from a CLI arg, so they never
   show up in process listings or shell history). Every interactive run
@@ -107,6 +112,26 @@ def ask_tier():
     return discovery.TIERS[int(raw) - 1]
 
 
+def ask_region(tier):
+    options = discovery.REGIONS_BY_TIER[tier]
+    if len(options) == 1:
+        return options[0]
+    print(f"\nData region on {tier} (where the logs are stored; the Auth Token must be this region's)")
+    for i, r in enumerate(options, 1):
+        print(f"  {i}. {r}")
+    raw = ask("Select (number or name)", default="1")
+    if raw.isdigit() and 1 <= int(raw) <= len(options):
+        return options[int(raw) - 1]
+    if raw.lower() in options:
+        return raw.lower()
+    sys.exit(f"Invalid region: {raw}. Use one of: {', '.join(options)}.")
+
+
+def region_suffix(region):
+    """'' for us1 (keeps the old env var and file names), '_ie1' otherwise."""
+    return "" if region == discovery.DEFAULT_REGION else f"_{region}"
+
+
 def build_arg_parser():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--sid-env", help="Env var name holding the Account SID. Passing this enables unattended mode.")
@@ -114,6 +139,10 @@ def build_arg_parser():
     p.add_argument("--tier", choices=discovery.TIERS,
                     help="Which environment these credentials belong to. Required in unattended mode, "
                          "asked interactively otherwise. Never guessed.")
+    p.add_argument("--region", choices=discovery.DATA_REGIONS,
+                    help="Twilio Region the data is created in and its logs stored in (default us1). "
+                         "The credentials must be that region's. Available per tier: "
+                         + "; ".join(f"{t}: {','.join(r)}" for t, r in discovery.REGIONS_BY_TIER.items()) + ".")
     p.add_argument("--categories", help="Comma list of: " + ",".join(ALL_CATEGORIES) + " (default: the Voice ones; the Video ones are opt-in)")
     p.add_argument("--calls", default="10-30", help="Fixed N, 'min-max', or 0 to skip. Default 10-30.")
     p.add_argument("--call-duration", dest="call_duration", default="1s-3m",
@@ -148,7 +177,8 @@ def build_arg_parser():
                    help="Env var NAME holding an API Key SID for Video access tokens. Without it a temporary "
                         "key is created for the run and deleted after.")
     p.add_argument("--video-secret-env", dest="video_secret_env", help="Env var NAME holding that API Key's secret.")
-    p.add_argument("--regions", default="", help="Comma list of conference regions, e.g. us1,au1,ie1")
+    p.add_argument("--regions", default="", help="Comma list of conference media regions, e.g. us1,au1,ie1. "
+                    "Only where the audio is mixed, the logs stay in --region.")
     p.add_argument("--describe-account", dest="describe_account", action="store_true",
                    help="Read-only: confirm the account on --tier, print one JSON line "
                         "(kind main/sub/unknown, status, friendly_name) and exit. Generates nothing.")
@@ -317,12 +347,13 @@ def build_plan(args, unattended):
     return plan
 
 
-def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode, no_prod_cap=False):
+def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode, no_prod_cap=False,
+                        region=discovery.DEFAULT_REGION):
     categories = [c for c in ALL_CATEGORIES if plan.get(c, "0") not in (None, "0", 0)]
     parts = [
         "python3 wizard.py",
         f"--sid-env {sid_env} --token-env {token_env}",
-        f"--tier {tier}",
+        f"--tier {tier}" + (f" --region {region}" if region != discovery.DEFAULT_REGION else ""),
         f"--categories {','.join(categories)}",
         f"--calls {plan.get('calls', '0')}",
         f"--recordings-transcriptions {plan.get('recordings_transcriptions', '0')}",
@@ -427,22 +458,32 @@ def main():
         if not args.tier:
             sys.exit("--tier is required in unattended mode (prod/stage/dev). Never guessed.")
         tier = args.tier
+        region = args.region or discovery.DEFAULT_REGION
     elif pre_tier:
         tier = pre_tier
+        region = args.region or discovery.datagen_region()
         print(f"\nCredentials: {mask(account_sid)}.")
     else:
         print(f"\nCredentials: {mask(account_sid)}.")
         tier = args.tier or ask_tier()
+        region = args.region or ask_region(tier)
 
-    host, tier, info = discovery.confirm_environment(account_sid, auth_token, tier)
+    try:
+        api_host = discovery.host_for(tier, region)
+    except ValueError as e:
+        sys.exit(str(e))
+    host, tier, info = discovery.confirm_environment(account_sid, auth_token, tier, region)
     if not host:
-        sys.exit(f"Could not authenticate against {tier} ({discovery.HOST_BY_TIER[tier]}). "
-                  "Check the credentials, or that this is really the right tier.")
+        if info and info.get("status"):
+            sys.exit(f"Could not authenticate against {tier}/{region} ({api_host}): HTTP {info['status']}. "
+                     "Check the credentials (Auth Tokens are per region), or that this is really the right tier and region.")
+        sys.exit(f"No answer from {api_host} ({tier}/{region}): {(info or {}).get('body', 'unknown error')}. "
+                 "Check the VPN; this is a connection problem, not the credentials.")
     if args.describe_account:
         # read-only lookup for the desktop app; exits before any numbers/prod/generation logic
         print(json.dumps(describe_account(account_sid, info)))
         sys.exit(0)
-    print(f"Confirmed: {info.get('friendly_name')}  tier={tier}  host={host}")
+    print(f"Confirmed: {info.get('friendly_name')}  tier={tier}  region={region}  host={host}")
 
     if safety.is_prod(host):
         if unattended:
@@ -457,6 +498,9 @@ def main():
                 sys.exit("Cancelled.")
 
     plan = build_plan(args, unattended)
+    if region != discovery.DEFAULT_REGION and any(plan.get(c) not in (None, "0", 0) for c in ("video_rooms", "video_recordings")):
+        # the Video hosts and the browser SDK environment are only known for us1; not guessed for other regions
+        sys.exit(f"Video categories are only supported in us1 for now, not {region}. Run them from a us1 profile.")
     plan, notes = safety.cap_plan_for_tier(host, plan, skip_cap=args.no_prod_cap)
     for n in notes:
         print(f"NOTE: {n}")
@@ -474,8 +518,9 @@ def main():
     else:
         mode = ask("Run now, save as standalone script, or both? (run/save/both)", default="run")
 
-    sid_env = args.sid_env or f"VOICEGEN_SID_{tier.upper()}"
-    token_env = args.token_env or f"VOICEGEN_TOKEN_{tier.upper()}"
+    rs = region_suffix(region)
+    sid_env = args.sid_env or f"VOICEGEN_SID_{tier.upper()}{rs.upper()}"
+    token_env = args.token_env or f"VOICEGEN_TOKEN_{tier.upper()}{rs.upper()}"
     if not unattended:
         os.environ[sid_env] = account_sid
         os.environ[token_env] = auth_token
@@ -486,11 +531,11 @@ def main():
         "token_env": token_env,
         "numbers": numbers,
         "plan": plan,
-        "results_path": args.results_path or f"voice_batch_{tier}_{datetime.date.today():%Y%m%d}.json",
+        "results_path": args.results_path or f"voice_batch_{tier}{rs}_{datetime.date.today():%Y%m%d}.json",
         "poll_after": True,
     }
 
-    out_path = args.out or f"voice_batch_{tier}_{datetime.date.today():%Y%m%d}.py"
+    out_path = args.out or f"voice_batch_{tier}{rs}_{datetime.date.today():%Y%m%d}.py"
 
     if mode in ("save", "both") and plan.get("video_recordings") not in (None, "0", 0):
         sys.exit("video_recordings needs a headless browser and cannot be saved as a standalone script. Use --mode run.")
@@ -510,7 +555,7 @@ def main():
 
     if not unattended:
         print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode,
-                            no_prod_cap=args.no_prod_cap)
+                            no_prod_cap=args.no_prod_cap, region=region)
 
 
 if __name__ == "__main__":

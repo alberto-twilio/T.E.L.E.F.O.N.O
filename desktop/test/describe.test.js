@@ -39,3 +39,8 @@ test('failure carries wizard.py\'s message and the tier', async (t) => {
 test('no python is a clear error', async () => {
   await assert.rejects(describeAccount({ pythonPath: null, wizardPath: 'w', tier: 'stage', creds }), /python3 was not found/);
 });
+
+test('a non-us1 data region passes --region and uses that region\'s env var names', async (t) => {
+  const py = fake(t, `case "$*" in *"--region au1"*) ;; *) exit 7;; esac\n[ "$VOICEGEN_TOKEN_STAGE_AU1" = "${creds.token}" ] || exit 9\necho '{"kind":"main"}'`);
+  assert.equal((await describeAccount({ pythonPath: py, wizardPath: 'w', tier: 'stage', region: 'au1', creds })).kind, 'main');
+});

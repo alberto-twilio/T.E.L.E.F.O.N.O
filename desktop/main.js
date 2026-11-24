@@ -8,7 +8,7 @@ const keychain = require('./lib/keychain');
 const { createRunner } = require('./lib/runner');
 const { describeAccount } = require('./lib/describe');
 const { resolveCredentialIntent } = require('./lib/credintent');
-const { TIERS, CATEGORIES, REGIONS, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
+const { TIERS, CATEGORIES, REGIONS, DATA_REGIONS_BY_TIER, dataRegionOf, consoleUrl, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, QUICK_TESTS, DEFAULTS, needsVideoKey, validateProfile, validateCredentials } = require('./lib/args');
 
 const PYTHON_FALLBACKS = ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3'];
 
@@ -33,7 +33,7 @@ const send = (channel, payload) => {
 };
 
 const PROFILE_FIELDS = [
-  'id', 'name', 'tier', 'categories', 'calls', 'callDuration',
+  'id', 'name', 'tier', 'dataRegion', 'categories', 'calls', 'callDuration',
   'recordingsTranscriptions', 'conferences', 'regions', 'noProdCap',
   'videoEnabled', 'videoRooms', 'videoRoomTypes', 'videoAudioOnly', 'videoPrefix',
   'videoRecordingsEnabled', 'videoComposeEnabled', 'videoRecRooms', 'videoParticipants', 'videoHold', 'videoTempKeys', 'videoKeyHint',
@@ -59,7 +59,7 @@ const main = async () => {
   }
 
   ipcMain.handle('app:info', () => ({
-    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, QUICK_TESTS, DEFAULTS,
+    pythonPath, wizardPath, TIERS, CATEGORIES, REGIONS, DATA_REGIONS_BY_TIER, VIDEO_ROOM_TYPES, VIDEO_AUDIO_ONLY, QUICK_TESTS, DEFAULTS,
   }));
 
   // credentialsStored lets the UI flag a profile whose Keychain item is gone (deleted in Keychain Access, new Mac, ...)
@@ -79,7 +79,7 @@ const main = async () => {
     const hasStored = existing ? Boolean(await keychain.getCredentials(clean.id)) : false;
     // a profile whose stored credentials went missing must get them re-entered, not silently saved without
     const stored = existing && hasStored ? await keychain.getCredentials(clean.id) : null;
-    const intent = resolveCredentialIntent({ existing, stored, credentials });
+    const intent = resolveCredentialIntent({ existing, stored, credentials, profile: clean });
     const { wantsCreds, creds } = intent;
     errors.push(...intent.errors);
     if (wantsCreds) errors.push(...validateCredentials(creds));
@@ -95,7 +95,7 @@ const main = async () => {
     if (wantsCreds) {
       clean.sidHint = creds.sid.trim().slice(-4);
       // main vs subaccount is read once, when the account is added (or its token replaced); also verifies the credentials on that tier
-      const info = await describeAccount({ pythonPath, wizardPath, tier: clean.tier, creds: { sid: creds.sid.trim(), token: creds.token.trim() } });
+      const info = await describeAccount({ pythonPath, wizardPath, tier: clean.tier, region: dataRegionOf(clean), creds: { sid: creds.sid.trim(), token: creds.token.trim() } });
       clean.accountKind = info.kind;
       clean.accountName = info.friendlyName;
     }
@@ -127,7 +127,7 @@ const main = async () => {
     if (!profile) throw new Error('Profile not found.');
     const creds = await keychain.getCredentials(id);
     if (!creds) throw new Error('No credentials stored for this profile. Edit it and re-enter them.');
-    const info = await describeAccount({ pythonPath, wizardPath, tier: profile.tier, creds });
+    const info = await describeAccount({ pythonPath, wizardPath, tier: profile.tier, region: dataRegionOf(profile), creds });
     const saved = store.saveProfile({ id, accountKind: info.kind, accountName: info.friendlyName });
     return { profile: saved, status: info.status };
   });

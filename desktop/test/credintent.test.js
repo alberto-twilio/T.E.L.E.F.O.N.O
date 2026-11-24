@@ -41,3 +41,14 @@ test('missing Keychain item: credentials are required again, SID must match the 
 test('new profile always needs credentials', () => {
   assert.equal(resolveCredentialIntent({ existing: null, stored: null, credentials: {} }).wantsCreds, true);
 });
+
+test('moving a stored profile to another data region needs that region\'s token', () => {
+  const us1 = { ...existing, dataRegion: 'us1' };
+  const blocked = resolveCredentialIntent({ existing: us1, stored, credentials: { sid: '', token: '' }, profile: { dataRegion: 'au1' } });
+  assert.match(blocked.errors.join(' '), /au1 Auth Token/);
+  const ok = resolveCredentialIntent({ existing: us1, stored, credentials: { sid: '', token: 'au1-token' }, profile: { dataRegion: 'au1' } });
+  assert.deepEqual(ok.errors, []);
+  assert.equal(ok.wantsCreds, true);
+  // same region (missing dataRegion means us1) keeps credentials without a token
+  assert.deepEqual(resolveCredentialIntent({ existing, stored, credentials: {}, profile: { dataRegion: 'us1' } }).errors, []);
+});

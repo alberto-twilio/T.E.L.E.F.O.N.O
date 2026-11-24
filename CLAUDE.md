@@ -114,6 +114,24 @@ not for someone running it.
   decides which host gets tried has. Don't reintroduce the try-all-three
   loop, if a new entry point needs environment info, it should ask (or
   take `--tier`), not guess.
+- **Data region (`--region`) is stated, never guessed, like the tier.**
+  `discovery.host_for(tier, region)` looks the host up in the explicit
+  `REGION_HOSTS` table and raises on anything else, never falls back to us1.
+  Keep it a table: prod is `api.<edge>.<region>.twilio.com` but stage/dev are
+  `api.<tier>-<region>.twilio.com`, and `api.sydney.au1.stage.twilio.com`
+  resolves in DNS but fails TLS (that broke every au1 save once). Only add a
+  host after it answers with Twilio's own 401 JSON, and only for a region the
+  tier really has: stage is us1 + au1 only (`api.stage-ie1` answers, but stage
+  has no IE1). The desktop shows a country flag before every profile name from
+  `dataRegion` (`REGION_FLAGS` in `renderer.js`): display only, never stored in the name. Credentials are per region.
+  `safety.is_prod()` is fail-safe on purpose: any host without a `stage`/`dev`
+  (or `stage-*`/`dev-*`) label counts as prod, so a regional prod host can't skip the PROD check. Don't
+  turn it back into an equality check. Video is refused outside us1 until its
+  regional hosts are verified. `desktop/lib/args.js` mirrors `REGIONS_BY_TIER`
+  as `DATA_REGIONS_BY_TIER`; a test compares them, change both. In the app the
+  profile field is `dataRegion` (missing = us1), separate from the conference
+  `regions`; moving a stored profile to another region requires that region's
+  token (`credintent.js`). Non-us1 env var names get a `_<REGION>` suffix.
 - **`DATAGEN_ACCOUNT_SID`/`DATAGEN_ACCOUNT_TOKEN`/`DATAGEN_ENVIRONMENT`
   are a convenience layer, not a third mode.** `resolve_from_datagen_env()`
   in `gen/discovery.py` only changes *how* credentials/tier get obtained

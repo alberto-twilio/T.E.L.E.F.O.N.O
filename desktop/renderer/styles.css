@@ -121,7 +121,8 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 10px; margin-to
 .pill.tier.dev { --pc: var(--ok); }
 .pill.kind { --pc: var(--muted); }
 .pill.video { --pc: var(--video); }
-input:disabled { opacity: .5; }
+.pill.region { --pc: var(--info); }
+input:disabled, select:disabled { opacity: .5; }
 .mt-12 { margin-top: 14px; } .mt-14 { margin-top: 18px; } .mt-16 { margin-top: 20px; }
 .gap-6 { gap: 6px; }
 .nowrap { flex-wrap: nowrap; }
@@ -154,3 +155,4 @@ button.wide { width: 100%; }
 .customize > summary { cursor: pointer; color: var(--info); font-size: 13px; user-select: none; }
 .summary-group { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 4px; }
 .summary-title { margin: 12px 0 10px; }
+.flag { font-style: normal; flex: none; }

@@ -141,6 +141,115 @@ Participants are spread over the rooms and hold for a random time in
 created for the run and deleted after (also on failure); or pass your own with
 `--video-key-env` / `--video-secret-env` (env var NAMES, never values).
 
+### Data region (logs outside us1)
+
+`--region` (default `us1`) picks the Twilio Region the data is created in, so
+its call/recording/conference logs are stored, and show up, in that region:
+
+```bash
+export VOICEGEN_SID_STAGE_AU1=...
+export VOICEGEN_TOKEN_STAGE_AU1=...   # the account's au1 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_STAGE_AU1 \
+  --tier stage --region au1 --categories calls --calls 2 --mode run
+```
+
+- Available: prod `us1, ie1, au1`; stage `us1, au1` (stage has no IE1); dev `us1, us2`. Prod
+  hosts look like `api.dublin.ie1.twilio.com`, stage/dev like
+  `api.stage-au1.twilio.com`. Each one was checked to answer as the Twilio API from
+  the VPN, which doesn't mean every Voice feature works there: try a stage
+  subaccount with small counts first.
+- Auth Tokens are per region: a us1 token gets a 401 from ie1. Interactively the
+  wizard asks for the region after the environment (or reads `DATAGEN_REGION`).
+- Calls between your own numbers: the inbound leg is processed in each number's
+  inbound processing region (us1 by default), so that leg may still log in us1.
+- Voice only for now: Video categories are refused outside us1.
+- Not the same as `--regions`, which only sets where conference audio is mixed.
+- Prod regional hosts get the same `PROD` confirmation and caps as us1.
+
+#### Examples per region
+
+Each region needs that region's Auth Token for the account. The env var names
+below are what the wizard and the desktop app use by default (`_<REGION>`
+suffix outside us1), but any names work.
+
+Stage, AU1: a small first batch of every Voice category:
+
+```bash
+export VOICEGEN_SID_STAGE_AU1=...
+export VOICEGEN_TOKEN_STAGE_AU1=...   # the account's au1 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_STAGE_AU1 \
+  --tier stage --region au1 \
+  --categories calls,recordings_transcriptions,conferences \
+  --calls 2-5 --call-duration 10s-1m --recordings-transcriptions 2 --conferences 2 \
+  --mode run
+```
+
+Prod, IE1: calls only (prod still needs `--confirm-prod`, and the caps apply):
+
+```bash
+export VOICEGEN_SID_PROD_IE1=...
+export VOICEGEN_TOKEN_PROD_IE1=...    # the account's ie1 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_PROD_IE1 --token-env VOICEGEN_TOKEN_PROD_IE1 \
+  --tier prod --region ie1 \
+  --categories calls --calls 5-10 --call-duration 30s-2m \
+  --mode run --confirm-prod
+```
+
+Prod, AU1: conferences whose logs land in au1 and whose audio is also mixed in au1:
+
+```bash
+export VOICEGEN_SID_PROD_AU1=...
+export VOICEGEN_TOKEN_PROD_AU1=...    # the account's au1 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_PROD_AU1 --token-env VOICEGEN_TOKEN_PROD_AU1 \
+  --tier prod --region au1 \
+  --categories conferences --conferences 3 --regions au1 \
+  --mode run --confirm-prod
+```
+
+Dev, US2:
+
+```bash
+export VOICEGEN_SID_DEV_US2=...
+export VOICEGEN_TOKEN_DEV_US2=...     # the account's us2 Auth Token
+python3 wizard.py --sid-env VOICEGEN_SID_DEV_US2 --token-env VOICEGEN_TOKEN_DEV_US2 \
+  --tier dev --region us2 --categories calls --calls 3 --mode run
+```
+
+Save a standalone script for a region (the regional host is written into it,
+the credentials are not), then run it later from cron/launchd:
+
+```bash
+python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_STAGE_AU1 \
+  --tier stage --region au1 --categories calls --calls 10-30 \
+  --mode save --out voice_batch_stage_au1.py
+```
+
+```bash
+VOICEGEN_SID_STAGE_AU1=... VOICEGEN_TOKEN_STAGE_AU1=... python3 voice_batch_stage_au1.py
+```
+
+Interactive, skipping the credential prompts with the `DATAGEN_*` variables
+(`DATAGEN_REGION` is optional and defaults to us1):
+
+```bash
+export DATAGEN_ACCOUNT_SID=...
+export DATAGEN_ACCOUNT_TOKEN=...      # the au1 Auth Token
+export DATAGEN_ENVIRONMENT=stage
+export DATAGEN_REGION=au1
+python3 wizard.py
+```
+
+Check which region a token belongs to without generating anything (one read-only GET):
+
+```bash
+python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_STAGE_AU1 \
+  --tier stage --region au1 --describe-account
+```
+
+In the desktop app: edit or create a profile, pick the **Data region** next to
+Environment, and enter that region's Auth Token. The flag before the profile
+name shows the region it runs in.
+
 `--tier` is required in unattended mode, same reasoning as everywhere
 else: there's no interactive menu to fall back on, so it must be stated
 explicitly. A wrong tier fails cleanly (wrong host for these credentials
