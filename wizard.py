@@ -227,15 +227,36 @@ def resolve_credentials(args):
     return account_sid, auth_token, False, None
 
 
-def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase):
+def split_trunk_numbers(numbers, region):
+    """Outside us1, numbers attached to an Elastic SIP Trunk are left out: the trunk
+    takes their inbound calls instead of the VoiceUrl the generator sets, so every call
+    and conference leg to them fails (seen on a prod AU1 run with test trunks whose
+    origination URIs pointed nowhere). In us1 the list is returned unchanged.
+    Returns (usable, skipped), both as {"phone", "sid"} dicts."""
+    plain = lambda n: {"phone": n["phone"], "sid": n["sid"]}
+    if region == discovery.DEFAULT_REGION:
+        return [plain(n) for n in numbers], []
+    usable = [plain(n) for n in numbers if not n.get("trunk_sid")]
+    skipped = [n for n in numbers if n.get("trunk_sid")]
+    return usable, skipped
+
+
+def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase, region=discovery.DEFAULT_REGION):
     print("\nChecking for voice-capable numbers...")
-    numbers = discovery.list_voice_numbers(host, account_sid, auth_token)
-    print(f"Found {len(numbers)} voice-capable number(s).")
+    found = discovery.list_voice_numbers(host, account_sid, auth_token)
+    print(f"Found {len(found)} voice-capable number(s).")
+    numbers, skipped = split_trunk_numbers(found, region)
+    for n in skipped:
+        print(f"WARNING: skipping {n['phone']}: it is attached to SIP trunk {n['trunk_sid']}, "
+              "so its inbound calls go to the trunk and every call to it would fail. "
+              "Detach it from the trunk to use it here.")
     purchased_any = False
 
     if len(numbers) >= 2:
         return numbers, purchased_any
 
+    if skipped:
+        print(f"\nOnly {len(numbers)} number(s) left without a SIP trunk ({region} needs at least 2).")
     print("\nFewer than 2 usable numbers. Checking whether this account can even purchase one...")
     status = discovery.check_compliance_profile(host, account_sid, auth_token)
     print(f"Compliance profile status: {status}")
@@ -507,7 +528,7 @@ def main():
 
     # numbers are only needed (and only fetched/purchased) when a Voice category will run
     if any(plan.get(c, "0") not in (None, "0", 0) for c in VOICE_CATEGORIES):
-        numbers, purchased_any = handle_numbers(host, account_sid, auth_token, unattended, args.allow_purchase)
+        numbers, purchased_any = handle_numbers(host, account_sid, auth_token, unattended, args.allow_purchase, region)
         print(f"\nUsing {len(numbers)} number(s): {', '.join(n['phone'] for n in numbers)}")
     else:
         numbers, purchased_any = [], False

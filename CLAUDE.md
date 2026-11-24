@@ -126,7 +126,9 @@ not for someone running it.
   `dataRegion` (`REGION_FLAGS` in `renderer.js`): display only, never stored in the name. Credentials are per region.
   `safety.is_prod()` is fail-safe on purpose: any host without a `stage`/`dev`
   (or `stage-*`/`dev-*`) label counts as prod, so a regional prod host can't skip the PROD check. Don't
-  turn it back into an equality check. Video is refused outside us1 until its
+  turn it back into an equality check. Outside us1, `split_trunk_numbers` in `wizard.py` skips numbers attached to an
+  Elastic SIP Trunk (a trunk takes their inbound calls, so every leg to them
+  fails); us1 keeps the full list on purpose. Video is refused outside us1 until its
   regional hosts are verified. `desktop/lib/args.js` mirrors `REGIONS_BY_TIER`
   as `DATA_REGIONS_BY_TIER`; a test compares them, change both. In the app the
   profile field is `dataRegion` (missing = us1), separate from the conference

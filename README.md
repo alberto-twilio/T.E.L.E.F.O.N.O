@@ -162,6 +162,11 @@ python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_ST
   wizard asks for the region after the environment (or reads `DATAGEN_REGION`).
 - Calls between your own numbers: the inbound leg is processed in each number's
   inbound processing region (us1 by default), so that leg may still log in us1.
+- Numbers attached to an Elastic SIP Trunk are skipped outside us1, with a
+  `WARNING: skipping ...` line: the trunk takes their inbound calls, not the
+  generator's VoiceUrl, so every call and conference leg to them fails. Detach
+  at least 2 numbers from their trunks (or use an account without trunks). In
+  us1 the number list is not filtered.
 - Voice only for now: Video categories are refused outside us1.
 - Not the same as `--regions`, which only sets where conference audio is mixed.
 - Prod regional hosts get the same `PROD` confirmation and caps as us1.
@@ -353,7 +358,7 @@ or unattended:
 ```bash
 python3 real_call_burst.py \
   --sid-env VOICEGEN_SID_STAGE --token-env VOICEGEN_TOKEN_STAGE --tier stage \
-  --to +34663053910 --count 10 --interval 1.5 --confirm-real-number
+  --to +34XXXXXXXXX --count 10 --interval 1.5 --confirm-real-number
 ```
 
 Every path requires an explicit, un-skippable confirmation naming the
@@ -363,6 +368,25 @@ or quiet mode. Verified in practice: a burst of calls a couple seconds
 apart against a real phone reliably produces a natural mix of
 `completed`, `busy` (whenever the line's already occupied by a previous
 call in the burst), and `no-answer`.
+
+### Recording real calls (`--record`)
+
+`--record` swaps the passage + pause for a short prompt and a
+`<Record transcribe="true">` (the same verb the generator's recordings use),
+so each answered call leaves a recording and a transcription. Only what the
+person on the phone says is recorded: answer, speak for a few seconds after
+the beep, then stay silent (5s of silence ends it, `--record-max` caps the
+length, default 120s). After the call the script waits for the transcription
+and prints the recording/transcription SIDs and statuses.
+
+It also takes `--region`, like `wizard.py`, so the call and its recording
+land in that region's logs:
+
+```bash
+python3 real_call_burst.py \
+  --sid-env VOICEGEN_SID_PROD_AU1 --token-env VOICEGEN_TOKEN_PROD_AU1 --tier prod --region au1 \
+  --to +34XXXXXXXXX --count 1 --record --confirm-prod --confirm-real-number
+```
 
 ## The standalone script
 

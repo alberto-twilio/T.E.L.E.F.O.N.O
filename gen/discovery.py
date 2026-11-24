@@ -34,6 +34,9 @@ REGION_HOSTS = {
 }
 REGIONS_BY_TIER = {tier: list(hosts) for tier, hosts in REGION_HOSTS.items()}
 DATA_REGIONS = ["us1", "ie1", "au1", "us2"]
+DATAGEN_SID_VAR = "DATAGEN_ACCOUNT_SID"
+DATAGEN_TOKEN_VAR = "DATAGEN_ACCOUNT_TOKEN"
+DATAGEN_TIER_VAR = "DATAGEN_ENVIRONMENT"
 DATAGEN_REGION_VAR = "DATAGEN_REGION"
 
 
@@ -91,8 +94,10 @@ def list_voice_numbers(host, account_sid, auth_token):
     auth_header = build_auth_header(account_sid, auth_token)
     resp = request(host, account_sid, auth_header, "GET", "/IncomingPhoneNumbers.json?PageSize=50")
     numbers = resp.get("incoming_phone_numbers", [])
+    # trunk_sid is set when the number is attached to an Elastic SIP Trunk: its inbound
+    # calls then go to the trunk, not to the VoiceUrl the generator sets (see wizard.handle_numbers)
     return [
-        {"phone": n["phone_number"], "sid": n["sid"]}
+        {"phone": n["phone_number"], "sid": n["sid"], "trunk_sid": n.get("trunk_sid")}
         for n in numbers
         if n.get("capabilities", {}).get("voice")
     ]
