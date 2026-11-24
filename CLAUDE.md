@@ -12,9 +12,12 @@ A standalone, local, script-based tool that generates realistic Twilio
 Voice test data (calls, recordings, transcriptions, conferences) against
 any account/subaccount in prod/stage/dev. Built to replace an ad-hoc
 process that used to live entirely inside a long-running Claude Code
-session, see `README.md` for the user-facing usage doc.
+session. `README.md` is the short user-facing doc (build the app, example
+commands, region routing); `docs/USAGE.md` is the full reference.
 
-Read `README.md` first. This file is for an agent working *on* the tool,
+Read `README.md` and `docs/USAGE.md` first. When a flag or behavior changes,
+update `docs/USAGE.md`, and `README.md` too if one of its examples or the
+routing section is affected. This file is for an agent working *on* the tool,
 not for someone running it.
 
 ## Non-negotiable design constraints
@@ -159,7 +162,7 @@ not for someone running it.
   a cloud-hosted scheduler (GitHub Actions, Lambda, etc.) can't reach them
   anyway. Portability is the unit of design instead: `wizard.py` itself
   runs fully unattended via `--sid-env`/`--token-env` + flags (see
-  README), and/or a standalone script can be saved and run with zero
+  `docs/USAGE.md`), and/or a standalone script can be saved and run with zero
   dependency on this repo. Either way, run it from wherever already has
   network access, on whatever cron/launchd that machine already has.
 - **`--confirm-prod` and `--allow-purchase` are not conveniences, they're
@@ -255,7 +258,7 @@ than calls on purpose, each one does more polling/setup work per unit
 two legs plus an explicit end-call), so a "10-30"-sized batch of those
 would take noticeably longer for comparable insight. `call_duration`
 defaults to `1s-3m`. If you change one of these, update the CLI default,
-the interactive prompt default, and both example commands in `README.md`
+the interactive prompt default, and both example commands in `docs/USAGE.md`
 together, they've drifted out of sync before.
 
 ## `select_multi` accepts names, not just indices
