@@ -211,6 +211,7 @@ const profileView = (p) => {
       ['Recordings / transcriptions', p.categories.includes('recordings_transcriptions') ? p.recordingsTranscriptions : 'off'],
       ['Conferences', p.categories.includes('conferences')
         ? `${p.conferences}${p.regions && p.regions.length ? `  (${p.regions.join(', ')})` : ''}` : 'off'],
+      ['Number routing', p.routeNumbers ? `inbound voice set to ${dataRegion(p)} before each run` : 'left as is'],
     ] },
     { title: 'Video', items: [
       ['Rooms', p.videoEnabled ? p.videoRooms : 'off'],
@@ -334,7 +335,7 @@ const editView = (existing) => {
   const D = state.info.DEFAULTS;
   const p = existing || {
     name: '', tier: 'stage', categories: [...state.info.CATEGORIES], calls: D.calls, callDuration: D.callDuration,
-    recordingsTranscriptions: D.recordingsTranscriptions, conferences: D.conferences, regions: [], noProdCap: false,
+    recordingsTranscriptions: D.recordingsTranscriptions, conferences: D.conferences, regions: [], noProdCap: false, routeNumbers: false,
     videoEnabled: false,
   };
   const V = (k) => (p[k] != null ? p[k] : D[k]);
@@ -366,6 +367,19 @@ const editView = (existing) => {
   regionSelect.addEventListener('change', syncRegionHint);
   tier.addEventListener('change', syncRegionHint);
   queueMicrotask(syncRegionHint);
+  const routeHint = h('div', { class: 'hint' });
+  const routeWrap = h('div', { id: 'route-wrap' },
+    h('label', { class: 'check' },
+      h('input', { type: 'checkbox', id: 'f-route', checked: Boolean(p.routeNumbers) }),
+      'Route the numbers to this data region'),
+    routeHint);
+  const syncRouteHint = () => {
+    routeHint.textContent = `Before each run, sets the inbound voice region of the numbers it uses to ${regionSelect.value} where it differs. `
+      + 'Without it, calls to a number routed elsewhere fail with SIP 404 (no recordings or conferences). The route is per number, for the whole account.';
+  };
+  regionSelect.addEventListener('change', syncRouteHint);
+  tier.addEventListener('change', syncRouteHint);
+  queueMicrotask(syncRouteHint);
 
   const checks = (name, all, chosen, labels = {}) =>
     h('div', { class: 'row' }, all.map((v) =>
@@ -517,6 +531,7 @@ const editView = (existing) => {
       field('Name', text('f-name', p.name)),
       field('Environment', tier, 'The environment these credentials belong to. Never guessed.'),
       h('div', {}, h('label', {}, 'Data region'), regionSelect, regionHint)),
+    routeWrap,
     noCap,
     h('h3', {}, existing ? 'Credentials (stored in the macOS Keychain)' : 'Credentials (stored in the macOS Keychain)'),
     h('div', { class: 'grid' },
@@ -535,7 +550,7 @@ const editView = (existing) => {
         name: val('#f-name').trim(), tier: tier.value, dataRegion: regionSelect.value, categories: voiceOn.checked ? checked('categories') : [],
         calls: val('#f-calls').trim(), callDuration: val('#f-duration').trim(),
         recordingsTranscriptions: val('#f-rec').trim(), conferences: val('#f-conf').trim(),
-        regions: checked('regions'), noProdCap: tier.value === 'prod' && $('#f-nocap').checked,
+        regions: checked('regions'), noProdCap: tier.value === 'prod' && $('#f-nocap').checked, routeNumbers: $('#f-route').checked,
         videoEnabled: videoOn.checked,
         videoRooms: val('#f-video-rooms').trim(), videoRoomTypes: checked('videoRoomTypes'), videoAudioOnly: val('#f-video-audioonly'),
         videoPrefix: val('#f-video-prefix').trim(),

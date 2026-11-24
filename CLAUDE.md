@@ -131,8 +131,15 @@ not for someone running it.
   fails); us1 keeps the full list on purpose. It also prints each number's
   inbound voice region (`discovery.inbound_voice_region`, read-only Routes GET):
   two prod AU1 numbers with no route got SIP 404 on every inbound leg until
-  their VoiceRegion was set to au1. Report only, never skip or change a
-  number's route from the tool (stage AU1 numbers have no route and work). Video is refused outside us1 until its
+  their VoiceRegion was set to au1. Without opt-in it only reports, never skips a
+  number for its route (stage AU1 numbers have no route and work). Routes are
+  changed only by `--route-numbers` (desktop: the profile's "Route the numbers to
+  this data region" checkbox, field `routeNumbers`): `route_numbers` in `wizard.py`
+  sets each number the run uses to the run's region via
+  `discovery.set_inbound_voice_region`, an unset route counting as us1. It is
+  account wide, so never default it on, never imply it from another flag, and
+  never route numbers the run doesn't use. It is not a consent flag: PROD
+  confirmation still applies. Video is refused outside us1 until its
   regional hosts are verified. `desktop/lib/args.js` mirrors `REGIONS_BY_TIER`
   as `DATA_REGIONS_BY_TIER`; a test compares them, change both. In the app the
   profile field is `dataRegion` (missing = us1), separate from the conference

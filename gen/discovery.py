@@ -116,6 +116,11 @@ def purchase_number(host, account_sid, auth_token, phone_number):
         return None, r.get("body")
     return {"phone": r["phone_number"], "sid": r["sid"]}, None
 
+def routes_host_for(api_host):
+    """Same tier and region, Routes API host: api.sydney.au1.twilio.com -> routes.sydney.au1.twilio.com."""
+    return ("routes." + api_host[len("api."):]) if api_host.startswith("api.") else "routes.twilio.com"
+
+
 def inbound_voice_region(host, account_sid, auth_token, phone):
     """Read-only Routes lookup of where a number's INBOUND calls are processed,
     on the same tier/region as the API host (api.sydney.au1.twilio.com ->
@@ -131,7 +136,7 @@ def inbound_voice_region(host, account_sid, auth_token, phone):
     import urllib.parse as _parse
     import urllib.request as _req
     import urllib.error as _err
-    url_host = ("routes." + host[len("api."):]) if host.startswith("api.") else "routes.twilio.com"
+    url_host = routes_host_for(host)
     try:
         r = _req.Request(f"https://{url_host}/v2/PhoneNumbers/{_parse.quote(phone)}", method="GET")
         r.add_header("Authorization", build_auth_header(account_sid, auth_token))
@@ -143,6 +148,31 @@ def inbound_voice_region(host, account_sid, auth_token, phone):
         return f"unknown (HTTP {e.code} from {url_host})"
     except Exception as e:
         return f"unknown ({e})"
+
+
+def set_inbound_voice_region(host, account_sid, auth_token, phone, region):
+    """Sets where a number's INBOUND calls are processed (Routes API:
+    POST /v2/PhoneNumbers/<number> VoiceRegion=<region>), on the same regional
+    host and token as the API host. This WRITES account configuration: only
+    called when the caller opted in (wizard.py --route-numbers, the desktop's
+    "Route numbers to this region" checkbox). The route is per number, account
+    wide, so it also changes where real callers to that number are handled.
+    Returns (True, region) or (False, "HTTP x from host: body")."""
+    import json as _json
+    import urllib.parse as _parse
+    import urllib.request as _req
+    import urllib.error as _err
+    url_host = routes_host_for(host)
+    try:
+        body = _parse.urlencode({"VoiceRegion": region}).encode()
+        r = _req.Request(f"https://{url_host}/v2/PhoneNumbers/{_parse.quote(phone)}", data=body, method="POST")
+        r.add_header("Authorization", build_auth_header(account_sid, auth_token))
+        with _req.urlopen(r, timeout=20) as resp:
+            return True, _json.loads(resp.read()).get("voice_region") or region
+    except _err.HTTPError as e:
+        return False, f"HTTP {e.code} from {url_host}: {e.read().decode()[:200]}"
+    except Exception as e:
+        return False, str(e)
 
 
 def check_compliance_profile(host, account_sid, auth_token):

@@ -182,6 +182,13 @@ python3 wizard.py --sid-env VOICEGEN_SID_STAGE_AU1 --token-env VOICEGEN_TOKEN_ST
 
   An unset route is only reported, not an error: the stage AU1 numbers have
   none and work.
+- `--route-numbers` does that for you: before generating, it sets the inbound
+  voice region of every number the run uses to `--region` where it differs
+  (an unset route counts as us1) and prints each change as old -> new. It also
+  works in us1, to bring numbers back after a profile moved regions. The route
+  is per number and account wide, so real callers to those numbers are handled
+  there too. Interactive runs outside us1 ask; in the desktop app it's the
+  profile's "Route the numbers to this data region" checkbox (off by default).
 - Voice only for now: Video categories are refused outside us1.
 - Not the same as `--regions`, which only sets where conference audio is mixed.
 - Prod regional hosts get the same `PROD` confirmation and caps as us1.

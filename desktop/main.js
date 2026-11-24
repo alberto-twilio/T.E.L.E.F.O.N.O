@@ -34,7 +34,7 @@ const send = (channel, payload) => {
 
 const PROFILE_FIELDS = [
   'id', 'name', 'tier', 'dataRegion', 'categories', 'calls', 'callDuration',
-  'recordingsTranscriptions', 'conferences', 'regions', 'noProdCap',
+  'recordingsTranscriptions', 'conferences', 'regions', 'noProdCap', 'routeNumbers',
   'videoEnabled', 'videoRooms', 'videoRoomTypes', 'videoAudioOnly', 'videoPrefix',
   'videoRecordingsEnabled', 'videoComposeEnabled', 'videoRecRooms', 'videoParticipants', 'videoHold', 'videoTempKeys', 'videoKeyHint',
 ];

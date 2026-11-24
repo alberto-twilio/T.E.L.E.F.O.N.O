@@ -39,6 +39,16 @@ test('--no-prod-cap is only added on prod, and never implies --confirm-prod', ()
   assert.ok(!buildWizardArgs({ ...prod, noProdCap: false }, { ...opts, confirmProd: true }).includes('--no-prod-cap'));
 });
 
+test('--route-numbers only when the profile asks for it, on any tier, never implying --confirm-prod', () => {
+  assert.ok(!buildWizardArgs(base(), opts).includes('--route-numbers'));
+  const stage = buildWizardArgs({ ...base(), routeNumbers: true, dataRegion: 'au1' }, opts);
+  assert.ok(stage.includes('--route-numbers') && !stage.includes('--confirm-prod'));
+  assert.equal(stage[stage.indexOf('--region') + 1], 'au1');
+  const prod = { ...base(), tier: 'prod', routeNumbers: true };
+  assert.throws(() => buildWizardArgs(prod, opts), /confirmation/);
+  assert.ok(buildWizardArgs(prod, { ...opts, confirmProd: true }).includes('--route-numbers'));
+});
+
 test('credentials never appear in argv', () => {
   const args = buildWizardArgs(base(), opts).join(' ');
   assert.ok(!/AC[0-9a-f]{32}/i.test(args));

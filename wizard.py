@@ -193,6 +193,9 @@ def build_arg_parser():
                     help=f"Skip the prod caps ({safety.PROD_MAX_PER_CATEGORY} per category, "
                          f"{safety.PROD_MAX_CALL_DURATION_SECONDS}s per call). "
                          "The PROD confirmation (or --confirm-prod) is still required.")
+    p.add_argument("--route-numbers", dest="route_numbers", action="store_true",
+                    help="Set the inbound voice region of every number this run uses to --region when it differs "
+                         "(an unset route counts as us1). Changes the numbers' routing account wide.")
     p.add_argument("--allow-purchase", action="store_true",
                     help="Required if fewer than 2 usable numbers exist and a purchase would be needed.")
     return p
@@ -254,9 +257,28 @@ def report_inbound_regions(host, account_sid, auth_token, numbers, region):
             mismatched.append(n["phone"])
     if mismatched:
         print(f"NOTE: {len(mismatched)} number(s) don't take inbound calls in {region}. If calls to them "
-              f"fail with SIP 404 (no recordings or conferences), set their inbound voice region to {region} "
-              "(Routes API: POST /v2/PhoneNumbers/<number> VoiceRegion=" + region + ", "
-              "on the same regional host and token).")
+              f"fail with SIP 404 (no recordings or conferences), set their inbound voice region to {region}: "
+              "run with --route-numbers, or Routes API POST /v2/PhoneNumbers/<number> VoiceRegion=" + region +
+              " on the same regional host and token.")
+
+
+def route_numbers(host, account_sid, auth_token, numbers, region):
+    """--route-numbers: sets each number's inbound voice region to the run's
+    region when it differs (an unset route counts as us1). Only the numbers this
+    run uses, and only because the caller asked; the route is account wide."""
+    print(f"\nRouting inbound voice to {region}:")
+    for n in numbers:
+        inbound = discovery.inbound_voice_region(host, account_sid, auth_token, n["phone"])
+        if (inbound or "").startswith("unknown"):
+            print(f"  {n['phone']}: left as is, could not read its route ({inbound})")
+            continue
+        current = inbound or discovery.DEFAULT_REGION
+        if current == region:
+            print(f"  {n['phone']}: already {region}")
+            continue
+        ok, detail = discovery.set_inbound_voice_region(host, account_sid, auth_token, n["phone"], region)
+        before = inbound or f"not set ({discovery.DEFAULT_REGION})"
+        print(f"  {n['phone']}: {before} -> {detail}" if ok else f"  {n['phone']}: FAILED to route to {region} ({detail})")
 
 
 def handle_numbers(host, account_sid, auth_token, unattended, allow_purchase, region=discovery.DEFAULT_REGION):
@@ -389,7 +411,7 @@ def build_plan(args, unattended):
 
 
 def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode, no_prod_cap=False,
-                        region=discovery.DEFAULT_REGION):
+                        region=discovery.DEFAULT_REGION, route_numbers=False):
     categories = [c for c in ALL_CATEGORIES if plan.get(c, "0") not in (None, "0", 0)]
     parts = [
         "python3 wizard.py",
@@ -420,6 +442,8 @@ def print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path,
         parts.append("--call-mix completed")
     if plan.get("conference_regions"):
         parts.append(f"--regions {','.join(plan['conference_regions'])}")
+    if route_numbers:
+        parts.append("--route-numbers")
     parts.append(f"--mode {mode}")
     if mode in ("save", "both") and out_path:
         parts.append(f"--out {out_path}")
@@ -550,6 +574,11 @@ def main():
     if any(plan.get(c, "0") not in (None, "0", 0) for c in VOICE_CATEGORIES):
         numbers, purchased_any = handle_numbers(host, account_sid, auth_token, unattended, args.allow_purchase, region)
         print(f"\nUsing {len(numbers)} number(s): {', '.join(n['phone'] for n in numbers)}")
+        if not args.route_numbers and not unattended and region != discovery.DEFAULT_REGION:
+            args.route_numbers = ask(f"Set these numbers' inbound voice region to {region} where it differs? (y/n)",
+                                     default="n").strip().lower().startswith("y")
+        if args.route_numbers:
+            route_numbers(host, account_sid, auth_token, numbers, region)
     else:
         numbers, purchased_any = [], False
     print("\nPlan:", json.dumps(plan, indent=2))
@@ -596,7 +625,7 @@ def main():
 
     if not unattended:
         print_repro_command(sid_env, token_env, tier, plan, purchased_any, out_path, mode,
-                            no_prod_cap=args.no_prod_cap, region=region)
+                            no_prod_cap=args.no_prod_cap, region=region, route_numbers=args.route_numbers)
 
 
 if __name__ == "__main__":

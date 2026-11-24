@@ -206,6 +206,8 @@ const buildWizardArgs = (profile, { wizardPath, resultsPath, confirmProd = false
     '--results-path', resultsPath,
   ];
   if (profile.regions && profile.regions.length) args.push('--regions', profile.regions.join(','));
+  // stored per profile like noProdCap: rewrites the numbers' inbound voice region (account wide), never a consent flag
+  if (profile.routeNumbers) args.push('--route-numbers');
   if (profile.videoEnabled) {
     args.push('--video-rooms', String(profile.videoRooms).trim(), '--video-room-prefix', String(profile.videoPrefix).trim());
     if (profile.videoRoomTypes && profile.videoRoomTypes.length) args.push('--video-room-types', profile.videoRoomTypes.join(','));
